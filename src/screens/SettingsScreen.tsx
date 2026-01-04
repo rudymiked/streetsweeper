@@ -11,6 +11,8 @@ if (!isWeb) {
 
 export default function SettingsScreen() {
   const { center, setCenter, showCompleted, setShowCompleted, showUnrun, setShowUnrun } = useAppState();
+  const { loadStreetsFromOSM } = useAppState();
+  const [loadingOSM, setLoadingOSM] = useState(false);
   const [addressInput, setAddressInput] = useState('');
 
   async function useCurrentLocation() {
@@ -102,6 +104,21 @@ export default function SettingsScreen() {
         <Text>Show completed</Text>
         <Switch value={showCompleted} onValueChange={setShowCompleted} />
       </View>
+      <View style={{ height: 18 }} />
+      <Button
+        title={loadingOSM ? 'Loading streets...' : 'Load Streets from OSM'}
+        onPress={async () => {
+          try {
+            setLoadingOSM(true);
+            await loadStreetsFromOSM(center, 2);
+            Alert.alert('Done', 'Loaded streets from OpenStreetMap');
+          } catch (err: any) {
+            Alert.alert('Error', err.message || 'Could not load streets');
+          } finally {
+            setLoadingOSM(false);
+          }
+        }}
+      />
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
         <Text>Show unrun</Text>
         <Switch value={showUnrun} onValueChange={setShowUnrun} />

@@ -44,10 +44,12 @@ export default function WebMapView({ center, streets, activities }: WebMapViewPr
     streets.forEach(street => {
       if (street.coords && street.coords.length > 0) {
         const latlngs = street.coords.map(c => [c.latitude, c.longitude] as L.LatLngExpression);
+        const isUnrun = !street.completed;
         L.polyline(latlngs, {
-          color: street.completed ? 'green' : 'red',
-          weight: 4,
-          opacity: 0.8,
+          color: isUnrun ? '#ff9800' : 'green',
+          weight: isUnrun ? 6 : 4,
+          opacity: 0.85,
+          dashArray: isUnrun ? '10,6' : undefined,
         }).addTo(map.current!);
       }
     });

@@ -1,25 +1,55 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Switch, FlatList, TouchableOpacity, Modal } from 'react-native';
 import { useAppState } from '../state/StateContext';
 import WebMapView from './WebMapView';
 
 export default function MapScreen({ navigation }: any) {
-    const { streets, center, toggleStreet, activities, showCompleted, setShowCompleted, showUnrun, setShowUnrun } = useAppState();
+    const { streets, center, toggleStreet, activities, showCompleted, setShowCompleted, showUnrun, setShowUnrun, radiusMiles } = useAppState();
 
-    // Generate simple synthetic polylines for each street for MVP.
+    // Generate polylines for each street: prefer stored `s.coords`, fallback to synthetic.
+    function haversineMiles(a: { latitude: number; longitude: number }, b: { latitude: number; longitude: number }) {
+        const toRad = (v: number) => (v * Math.PI) / 180;
+        const R = 6371e3; // meters
+        const φ1 = toRad(a.latitude);
+        const φ2 = toRad(b.latitude);
+        const Δφ = toRad(b.latitude - a.latitude);
+        const Δλ = toRad(b.longitude - a.longitude);
+        const aa = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+        const c = 2 * Math.atan2(Math.sqrt(aa), Math.sqrt(1 - aa));
+        const meters = R * c;
+        return meters / 1609.344;
+    }
+
     const streetPolylines = useMemo(() => {
         return streets.map((s, idx) => {
-            const baseLat = (center.latitude || Number.parseFloat(process.env.DEFAULT_MAP_CENTER_LATITUDE!)) + (idx * 0.001 - 0.005);
-            const baseLng = (center.longitude || Number.parseFloat(process.env.DEFAULT_MAP_CENTER_LONGITUDE!)) + (idx * 0.001 - 0.005);
-            const coords = [
-                { latitude: baseLat, longitude: baseLng },
-                { latitude: baseLat + 0.0008, longitude: baseLng + 0.0012 },
-            ];
-            return { id: s.id, name: s.name, completed: s.completed, coords };
-        });
-    }, [streets, center.latitude, center.longitude]);
+            let coords: any[] = [];
+            if (s.coords && s.coords.length > 0) {
+                coords = s.coords;
+            } else {
+                const baseLat = (center.latitude || Number.parseFloat(process.env.DEFAULT_MAP_CENTER_LATITUDE!)) + (idx * 0.001 - 0.005);
+                const baseLng = (center.longitude || Number.parseFloat(process.env.DEFAULT_MAP_CENTER_LONGITUDE!)) + (idx * 0.001 - 0.005);
+                coords = [
+                    { latitude: baseLat, longitude: baseLng },
+                    { latitude: baseLat + 0.0008, longitude: baseLng + 0.0012 },
+                ];
+            }
 
-    const visible = streetPolylines.filter(sp => (sp.completed ? showCompleted : showUnrun));
+            const centroid = coords.reduce((acc, c) => ({ latitude: acc.latitude + c.latitude, longitude: acc.longitude + c.longitude }), { latitude: 0, longitude: 0 });
+            centroid.latitude /= coords.length;
+            centroid.longitude /= coords.length;
+
+            const distanceMiles = haversineMiles(center, centroid);
+
+            return { id: s.id, name: s.name, completed: s.completed, coords, distanceMiles };
+        });
+    }, [streets, center.latitude, center.longitude, radiusMiles]);
+
+    const visible = streetPolylines.filter(sp => (sp.completed ? showCompleted : showUnrun) && sp.distanceMiles <= (radiusMiles || 2));
+
+    useEffect(() => {
+        console.log('streetPolylines (sample 10):', streetPolylines.slice(0, 10));
+        console.log('visible (sample 10):', visible.slice(0, 10));
+    }, [streetPolylines, visible]);
 
     // Decode activity polylines (same algorithm as native map screen)
     function decodePolyline(polylineStr: string) {
@@ -70,6 +100,14 @@ export default function MapScreen({ navigation }: any) {
             {/* Header provided by app-level navigation; settings accessible via top-right button. */}
             <View style={styles.mapPlaceholder}>
                 <WebMapView center={center} streets={visible} activities={activityPolylines} />
+                <View style={{ position: 'absolute', bottom: 12, left: 12, backgroundColor: 'rgba(255,255,255,0.9)', padding: 8, borderRadius: 8 }}>
+                    <Text style={{ fontSize: 12, fontWeight: '700' }}>Debug</Text>
+                    <Text style={{ fontSize: 12 }}>streets: {streetPolylines.length}</Text>
+                    <Text style={{ fontSize: 12 }}>visible: {visible.length}</Text>
+                    {streetPolylines.slice(0,5).map(s => (
+                        <Text key={s.id} style={{ fontSize: 11 }}>{s.id} · {s.completed ? 'done' : 'unrun'} · {s.distanceMiles.toFixed(2)}mi</Text>
+                    ))}
+                </View>
             </View>
 
             {/* Controls moved into Settings screen; hidden on main map UI. */}

@@ -15,7 +15,7 @@ if (!isWeb) {
 }
 
 export default function MapScreen({ navigation }: any) {
-  const { streets, center, toggleStreet, activities, showCompleted, setShowCompleted, showUnrun, setShowUnrun } = useAppState();
+  const { streets, center, toggleStreet, activities, showCompleted, setShowCompleted, showUnrun, setShowUnrun, radiusMiles } = useAppState();
 
   // Default region (falls back when center is 0/0)
   const defaultRegion: any = {
@@ -25,20 +25,55 @@ export default function MapScreen({ navigation }: any) {
     longitudeDelta: 0.02,
   };
 
-  // Generate simple synthetic polylines for each street for MVP.
+  // Generate polylines for each street: prefer stored `s.coords`, fallback to synthetic.
+  function haversineMiles(a: { latitude: number; longitude: number }, b: { latitude: number; longitude: number }) {
+    const toRad = (v: number) => (v * Math.PI) / 180;
+    const R = 6371e3; // meters
+    const φ1 = toRad(a.latitude);
+    const φ2 = toRad(b.latitude);
+    const Δφ = toRad(b.latitude - a.latitude);
+    const Δλ = toRad(b.longitude - a.longitude);
+    const aa = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+    const c = 2 * Math.atan2(Math.sqrt(aa), Math.sqrt(1 - aa));
+    const meters = R * c;
+    return meters / 1609.344;
+  }
+
   const streetPolylines = useMemo(() => {
     return streets.map((s, idx) => {
-      const baseLat = (center.latitude || defaultRegion.latitude) + (idx * 0.001 - 0.005);
-      const baseLng = (center.longitude || defaultRegion.longitude) + (idx * 0.001 - 0.005);
-      const coords: any[] = [
-        { latitude: baseLat, longitude: baseLng },
-        { latitude: baseLat + 0.0008, longitude: baseLng + 0.0012 },
-      ];
-      return { id: s.id, name: s.name, completed: s.completed, coords };
-    });
-  }, [streets, center.latitude, center.longitude]);
+      let coords: any[] = [];
+      if (s.coords && s.coords.length > 0) {
+        coords = s.coords;
+      } else {
+        const baseLat = (center.latitude || defaultRegion.latitude) + (idx * 0.001 - 0.005);
+        const baseLng = (center.longitude || defaultRegion.longitude) + (idx * 0.001 - 0.005);
+        coords = [
+          { latitude: baseLat, longitude: baseLng },
+          { latitude: baseLat + 0.0008, longitude: baseLng + 0.0012 },
+        ];
+      }
 
-  const visible = streetPolylines.filter(sp => (sp.completed ? showCompleted : showUnrun));
+      // compute centroid for distance checks
+      const centroid = coords.reduce(
+        (acc, c) => ({ latitude: acc.latitude + c.latitude, longitude: acc.longitude + c.longitude }),
+        { latitude: 0, longitude: 0 }
+      );
+      centroid.latitude /= coords.length;
+      centroid.longitude /= coords.length;
+
+      const distanceMiles = haversineMiles(center, centroid);
+
+      return { id: s.id, name: s.name, completed: s.completed, coords, distanceMiles };
+    });
+  }, [streets, center.latitude, center.longitude, radiusMiles]);
+
+  const visible = streetPolylines.filter(sp => (sp.completed ? showCompleted : showUnrun) && sp.distanceMiles <= (radiusMiles || 2));
+
+  // debug logging to help verify why streets may be filtered out
+  React.useEffect(() => {
+    console.log('streetPolylines (sample 10):', streetPolylines.slice(0, 10));
+    console.log('visible (sample 10):', visible.slice(0, 10));
+  }, [streetPolylines, visible]);
 
   // Decode and render activity polylines
   function decodePolyline(polylineStr: string) {
@@ -119,8 +154,9 @@ export default function MapScreen({ navigation }: any) {
             <Polyline
               key={s.id}
               coordinates={s.coords}
-              strokeColor={s.completed ? 'green' : 'red'}
-              strokeWidth={4}
+              strokeColor={!s.completed ? '#ff9800' : 'green'}
+              strokeWidth={!s.completed ? 6 : 4}
+              lineDashPattern={!s.completed ? [10, 5] : undefined}
             />
           ))}
           {activityPolylines.map(a => (
