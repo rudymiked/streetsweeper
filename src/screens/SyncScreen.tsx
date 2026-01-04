@@ -34,14 +34,14 @@ export default function SyncScreen() {
       // On web, check if we're returning from Strava OAuth
       const params = new URLSearchParams(window.location.search);
       const code = params.get('code');
-      
+
       if (code) {
         // We got an auth code, exchange it for token
         exchangeCodeForToken(code);
         // Clean up the URL
         window.history.replaceState({}, document.title, window.location.pathname);
       }
-      
+
       // Set redirect URI
       const uri = `${window.location.origin}${window.location.pathname}`;
       setRedirectUri(uri);
@@ -140,7 +140,7 @@ export default function SyncScreen() {
 
     try {
       const res = await fetch(
-        'https://www.strava.com/api/v3/athlete/activities?per_page=30',
+        'https://www.strava.com/api/v3/athlete/activities?per_page=200',
         {
           headers: { Authorization: `Bearer ${accessToken}` },
         }

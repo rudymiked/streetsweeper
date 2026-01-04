@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, Button, TextInput, Alert, Platform } from 'react-native';
+import { View, Text, StyleSheet, Button, TextInput, Alert, Platform, Switch } from 'react-native';
 import { useAppState } from '../state/StateContext';
 
 // Only import expo-location on native platforms
@@ -10,7 +10,7 @@ if (!isWeb) {
 }
 
 export default function SettingsScreen() {
-  const { center, setCenter } = useAppState();
+  const { center, setCenter, showCompleted, setShowCompleted, showUnrun, setShowUnrun } = useAppState();
   const [addressInput, setAddressInput] = useState('');
 
   async function useCurrentLocation() {
@@ -95,6 +95,17 @@ export default function SettingsScreen() {
       <Text>Or enter an address:</Text>
       <TextInput style={styles.input} placeholder="Enter address" value={addressInput} onChangeText={setAddressInput} />
       <Button title="Set as Center" onPress={useAddress} />
+
+      <View style={{ height: 18 }} />
+      <Text style={{ fontSize: 16, fontWeight: '700', marginBottom: 8 }}>Streets</Text>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+        <Text>Show completed</Text>
+        <Switch value={showCompleted} onValueChange={setShowCompleted} />
+      </View>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Text>Show unrun</Text>
+        <Switch value={showUnrun} onValueChange={setShowUnrun} />
+      </View>
     </View>
   );
 }

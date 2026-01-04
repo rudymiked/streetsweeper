@@ -4,9 +4,7 @@ import { useAppState } from '../state/StateContext';
 import WebMapView from './WebMapView';
 
 export default function MapScreen({ navigation }: any) {
-    const { streets, center, toggleStreet, activities } = useAppState();
-    const [showCompleted, setShowCompleted] = useState(true);
-    const [showUnrun, setShowUnrun] = useState(true);
+    const { streets, center, toggleStreet, activities, showCompleted, setShowCompleted, showUnrun, setShowUnrun } = useAppState();
 
     // Generate simple synthetic polylines for each street for MVP.
     const streetPolylines = useMemo(() => {
@@ -74,49 +72,7 @@ export default function MapScreen({ navigation }: any) {
                 <WebMapView center={center} streets={visible} activities={activityPolylines} />
             </View>
 
-            <View style={styles.controls}>
-                    <Text style={styles.title}>Streets</Text>
-                    <View style={styles.row}>
-                        <Text>Show completed</Text>
-                        <Switch value={showCompleted} onValueChange={setShowCompleted} />
-                    </View>
-                    <View style={styles.row}>
-                        <Text>Show unrun</Text>
-                        <Switch value={showUnrun} onValueChange={setShowUnrun} />
-                    </View>
-
-                    <FlatList
-                        data={visible}
-                        keyExtractor={i => i.id}
-                        renderItem={({ item }) => (
-                            <TouchableOpacity onPress={() => toggleStreet(item.id)} style={styles.item}>
-                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                                    <View style={{ width: 12, height: 12, backgroundColor: item.completed ? 'green' : 'red', borderRadius: 2 }} />
-                                    <Text style={{ textDecorationLine: item.completed ? 'line-through' : 'none', flex: 1 }}>{item.name}</Text>
-                                </View>
-                                <Text>{item.completed ? '✓' : ''}</Text>
-                            </TouchableOpacity>
-                        )}
-                    />
-                    {activities.length > 0 && (
-                        <>
-                            <Text style={{ fontWeight: '600', marginTop: 8, marginBottom: 4 }}>Strava Activities</Text>
-                            <FlatList
-                                data={activities}
-                                scrollEnabled={false}
-                                keyExtractor={i => String(i.id)}
-                                renderItem={({ item }) => (
-                                    <View style={{ ...styles.item, backgroundColor: '#e3f2fd' }}>
-                                        <Text style={{ fontWeight: '500' }}>{item.name}</Text>
-                                        <Text style={{ fontSize: 11, color: '#666' }}>
-                                            {item.type} · {(item.distance / 1000).toFixed(1)} km
-                                        </Text>
-                                    </View>
-                                )}
-                            />
-                        </>
-                    )}
-                </View>
+            {/* Controls moved into Settings screen; hidden on main map UI. */}
         </View>
     );
 }
