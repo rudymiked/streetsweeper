@@ -1,7 +1,18 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, Switch, FlatList, TouchableOpacity, Platform } from 'react-native';
-import MapView, { PROVIDER_GOOGLE, Polyline, LatLng, Region } from 'react-native-maps';
 import { useAppState } from '../state/StateContext';
+
+// Only import MapView on native platforms
+let MapView: any = null;
+let PROVIDER_GOOGLE: any = null;
+let Polyline: any = null;
+const isWeb = typeof Platform === 'undefined' || Platform?.OS === 'web';
+if (!isWeb) {
+  const mapsModule = require('react-native-maps');
+  MapView = mapsModule.default;
+  PROVIDER_GOOGLE = mapsModule.PROVIDER_GOOGLE;
+  Polyline = mapsModule.Polyline;
+}
 
 export default function MapScreen({ navigation }: any) {
   const { streets, center, toggleStreet, activities } = useAppState();
@@ -9,9 +20,9 @@ export default function MapScreen({ navigation }: any) {
   const [showUnrun, setShowUnrun] = useState(true);
 
   // Default region (falls back when center is 0/0)
-  const defaultRegion: Region = {
-    latitude: center.latitude || 37.78825,
-    longitude: center.longitude || -122.4324,
+  const defaultRegion: any = {
+    latitude: center.latitude || process.env.DEFAULT_MAP_CENTER_LATITUDE,
+    longitude: center.longitude || process.env.DEFAULT_MAP_CENTER_LONGITUDE,
     latitudeDelta: 0.02,
     longitudeDelta: 0.02,
   };
@@ -21,7 +32,7 @@ export default function MapScreen({ navigation }: any) {
     return streets.map((s, idx) => {
       const baseLat = (center.latitude || defaultRegion.latitude) + (idx * 0.001 - 0.005);
       const baseLng = (center.longitude || defaultRegion.longitude) + (idx * 0.001 - 0.005);
-      const coords: LatLng[] = [
+      const coords: any[] = [
         { latitude: baseLat, longitude: baseLng },
         { latitude: baseLat + 0.0008, longitude: baseLng + 0.0012 },
       ];
@@ -77,8 +88,67 @@ export default function MapScreen({ navigation }: any) {
       coords: decodePolyline(a.polyline || ''),
     }));
 
-  // Settings UI moved to dedicated Settings screen; header buttons provided by App.tsx
+  // Web and native share the same UI
+  if (isWeb) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.mapPlaceholder}>
+          <Text style={styles.mapText}>
+            Map view: {visible.length} streets + {activities.length} activities
+          </Text>
+          <Text style={styles.centerText}>
+            Center: {center.name} ({center.latitude.toFixed(4)}, {center.longitude.toFixed(4)})
+          </Text>
+        </View>
 
+        <View style={styles.controls}>
+          <Text style={styles.title}>Streets</Text>
+          <View style={styles.row}>
+            <Text>Show completed</Text>
+            <Switch value={showCompleted} onValueChange={setShowCompleted} />
+          </View>
+          <View style={styles.row}>
+            <Text>Show unrun</Text>
+            <Switch value={showUnrun} onValueChange={setShowUnrun} />
+          </View>
+
+          <FlatList
+            data={visible}
+            keyExtractor={i => i.id}
+            renderItem={({ item }) => (
+              <TouchableOpacity onPress={() => toggleStreet(item.id)} style={styles.item}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <View style={{ width: 12, height: 12, backgroundColor: item.completed ? 'green' : 'red', borderRadius: 2 }} />
+                  <Text style={{ textDecorationLine: item.completed ? 'line-through' : 'none', flex: 1 }}>{item.name}</Text>
+                </View>
+                <Text>{item.completed ? '✓' : ''}</Text>
+              </TouchableOpacity>
+            )}
+          />
+          {activities.length > 0 && (
+            <>
+              <Text style={{ fontWeight: '600', marginTop: 8, marginBottom: 4 }}>Strava Activities</Text>
+              <FlatList
+                data={activities}
+                scrollEnabled={false}
+                keyExtractor={i => String(i.id)}
+                renderItem={({ item }) => (
+                  <View style={{ ...styles.item, backgroundColor: '#e3f2fd' }}>
+                    <Text style={{ fontWeight: '500' }}>{item.name}</Text>
+                    <Text style={{ fontSize: 11, color: '#666' }}>
+                      {item.type} · {(item.distance / 1000).toFixed(1)} km
+                    </Text>
+                  </View>
+                )}
+              />
+            </>
+          )}
+        </View>
+      </View>
+    );
+  }
+
+  // Native mobile version with MapView
   return (
     <>
       <View style={styles.container}>
@@ -139,10 +209,13 @@ export default function MapScreen({ navigation }: any) {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   map: { flex: 1 },
-  controls: { position: 'absolute', top: 12, left: 12, right: 12, backgroundColor: 'rgba(255,255,255,0.95)', padding: 12, borderRadius: 8 },
+  mapPlaceholder: { flex: 1, backgroundColor: '#e8f4f8', justifyContent: 'center', alignItems: 'center', padding: 16 },
+  mapText: { fontSize: 16, fontWeight: '600', textAlign: 'center' },
+  centerText: { fontSize: 12, marginTop: 8, textAlign: 'center', color: '#666' },
+  controls: { position: 'absolute', top: 12, left: 12, right: 12, maxHeight: '40%', backgroundColor: 'rgba(255,255,255,0.95)', padding: 12, borderRadius: 8 },
   title: { fontSize: 16, fontWeight: '700' },
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 },
-  item: { paddingVertical: 8, borderBottomWidth: 1, borderColor: '#eee', flexDirection: 'row', justifyContent: 'space-between' },
+  item: { paddingVertical: 8, borderBottomWidth: 1, borderColor: '#eee', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   modal: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   modalContent: { backgroundColor: 'white', padding: 16, borderTopLeftRadius: 16, borderTopRightRadius: 16 },
   modalTitle: { fontSize: 18, fontWeight: '700', marginBottom: 12 },

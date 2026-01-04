@@ -19,14 +19,12 @@ type StateContextType = {
 
 const ctx = createContext<StateContextType | undefined>(undefined);
 
-const initialCenter: Center = { name: 'Saved Home', latitude: 37.78825, longitude: -122.4324 };
-
-const initialStreets: Street[] = [];
+const initialCenter: Center = { name: 'Saved Home', latitude: Number.parseFloat(process.env.DEFAULT_MAP_CENTER_LATITUDE || '47.667120970606'), longitude: Number.parseFloat(process.env.DEFAULT_MAP_CENTER_LONGITUDE || '-122.38431335074893') };
 
 export const StateProvider = ({ children }: { children: ReactNode }) => {
   const [center, setCenter] = useState<Center>(initialCenter);
   const [radiusMiles, setRadiusMiles] = useState<number>(2);
-  const [streets, setStreets] = useState<Street[]>(initialStreets);
+  const [streets, setStreets] = useState<Street[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
 
   function toggleStreet(id: string) {

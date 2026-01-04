@@ -1,9 +1,16 @@
-import React, { useState } from 'react';
-import { View, Text, Button, StyleSheet, Alert, FlatList, ScrollView } from 'react-native';
-import * as AuthSession from 'expo-auth-session';
+import React, { useState, useEffect } from 'react';
+import { View, Text, Button, StyleSheet, Alert, FlatList, ScrollView, Platform } from 'react-native';
 import Constants from 'expo-constants';
 import { useAppState } from '../state/StateContext';
-import * as WebBrowser from 'expo-web-browser';
+
+// Only import Expo modules on native platforms
+let AuthSession: any = null;
+let WebBrowser: any = null;
+const isWeb = typeof Platform === 'undefined' || Platform?.OS === 'web';
+if (!isWeb) {
+  AuthSession = require('expo-auth-session');
+  WebBrowser = require('expo-web-browser');
+}
 
 // Read Strava credentials from Expo config extra
 const expoExtra =
@@ -20,11 +27,33 @@ export default function SyncScreen() {
   const [message, setMessage] = useState<string | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [activities, setActivities] = useState<any[]>([]);
+  const [redirectUri, setRedirectUri] = useState<string>('');
 
-  // Modern Expo redirect URI
-  const redirectUri = AuthSession.makeRedirectUri({
-    preferLocalhost: true,
-  });
+  useEffect(() => {
+    if (isWeb) {
+      // On web, check if we're returning from Strava OAuth
+      const params = new URLSearchParams(window.location.search);
+      const code = params.get('code');
+      
+      if (code) {
+        // We got an auth code, exchange it for token
+        exchangeCodeForToken(code);
+        // Clean up the URL
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+      
+      // Set redirect URI
+      const uri = `${window.location.origin}${window.location.pathname}`;
+      setRedirectUri(uri);
+    } else {
+      // On native, use Expo's redirect URI
+      if (!AuthSession) throw new Error('AuthSession not available');
+      const uri = AuthSession.makeRedirectUri({
+        preferLocalhost: true,
+      });
+      setRedirectUri(uri);
+    }
+  }, []);
 
   async function connectToStrava() {
     setMessage(null);
@@ -45,23 +74,37 @@ export default function SyncScreen() {
       `&scope=${encodeURIComponent(STRAVA_SCOPES)}`;
 
     try {
-      const result = await WebBrowser.openAuthSessionAsync(authUrl, redirectUri);
+      if (isWeb) {
+        // On web, redirect directly to Strava (user will be redirected back here)
+        window.location.href = authUrl;
+      } else {
+        // On native, use WebBrowser
+        if (!WebBrowser) throw new Error('WebBrowser not available');
+        const result = await WebBrowser.openAuthSessionAsync(authUrl, redirectUri);
 
-      if (!result || result.type !== 'success') {
-        setMessage(`Strava auth failed or cancelled: ${JSON.stringify(result)}`);
-        return;
+        if (!result || result.type !== 'success') {
+          setMessage(`Strava auth failed or cancelled: ${JSON.stringify(result)}`);
+          return;
+        }
+
+        const returnedUrl = result.url;
+        const params = new URL(returnedUrl).searchParams;
+        const code = params.get('code');
+
+        if (!code) {
+          setMessage(`No code returned from Strava: ${returnedUrl}`);
+          return;
+        }
+
+        await exchangeCodeForToken(code);
       }
+    } catch (err: any) {
+      setMessage(`Auth error: ${err.message}`);
+    }
+  }
 
-      const returnedUrl = result.url;
-      const params = new URL(returnedUrl).searchParams;
-      const code = params.get('code');
-
-      if (!code) {
-        setMessage(`No code returned from Strava: ${returnedUrl}`);
-        return;
-      }
-
-      // Exchange code for token
+  async function exchangeCodeForToken(code: string) {
+    try {
       const tokenRes = await fetch('https://www.strava.com/oauth/token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -82,7 +125,7 @@ export default function SyncScreen() {
         setMessage(`Token error: ${JSON.stringify(tokenJson)}`);
       }
     } catch (err: any) {
-      setMessage(`Auth error: ${err.message}`);
+      setMessage(`Token exchange error: ${err.message}`);
     }
   }
 
@@ -139,7 +182,7 @@ export default function SyncScreen() {
           Register this domain in Strava:
         </Text>
         <Text style={{ fontSize: 11, marginTop: 6, fontFamily: 'monospace' }}>
-          {redirectUri}
+          {redirectUri || 'Loading...'}
         </Text>
       </View>
 

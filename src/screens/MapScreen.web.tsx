@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, Switch, FlatList, TouchableOpacity, Modal } from 'react-native';
 import { useAppState } from '../state/StateContext';
+import WebMapView from './WebMapView';
 
 export default function MapScreen({ navigation }: any) {
     const { streets, center, toggleStreet, activities } = useAppState();
@@ -10,8 +11,8 @@ export default function MapScreen({ navigation }: any) {
     // Generate simple synthetic polylines for each street for MVP.
     const streetPolylines = useMemo(() => {
         return streets.map((s, idx) => {
-            const baseLat = (center.latitude || 37.78825) + (idx * 0.001 - 0.005);
-            const baseLng = (center.longitude || -122.4324) + (idx * 0.001 - 0.005);
+            const baseLat = (center.latitude || Number.parseFloat(process.env.DEFAULT_MAP_CENTER_LATITUDE!)) + (idx * 0.001 - 0.005);
+            const baseLng = (center.longitude || Number.parseFloat(process.env.DEFAULT_MAP_CENTER_LONGITUDE!)) + (idx * 0.001 - 0.005);
             const coords = [
                 { latitude: baseLat, longitude: baseLng },
                 { latitude: baseLat + 0.0008, longitude: baseLng + 0.0012 },
@@ -22,18 +23,55 @@ export default function MapScreen({ navigation }: any) {
 
     const visible = streetPolylines.filter(sp => (sp.completed ? showCompleted : showUnrun));
 
+    // Decode activity polylines (same algorithm as native map screen)
+    function decodePolyline(polylineStr: string) {
+        const coords: any[] = [];
+        let index = 0;
+        let lat = 0;
+        let lng = 0;
+
+        while (index < polylineStr.length) {
+            let result = 0;
+            let shift = 0;
+            let byte = 0;
+
+            do {
+                byte = polylineStr.charCodeAt(index) - 63;
+                result |= (byte & 0x1f) << shift;
+                shift += 5;
+                index += 1;
+            } while (byte >= 0x20);
+
+            lat += (result & 1) ? ~(result >> 1) : result >> 1;
+
+            result = 0;
+            shift = 0;
+            do {
+                byte = polylineStr.charCodeAt(index) - 63;
+                result |= (byte & 0x1f) << shift;
+                shift += 5;
+                index += 1;
+            } while (byte >= 0x20);
+
+            lng += (result & 1) ? ~(result >> 1) : result >> 1;
+
+            coords.push({ latitude: lat / 1e5, longitude: lng / 1e5 });
+        }
+
+        return coords;
+    }
+
+    const activityPolylines = activities
+        .filter((a: any) => a.polyline)
+        .map((a: any) => ({ id: a.id, name: a.name, coords: decodePolyline(a.polyline || '') }));
+
     // Settings handled via top-level Settings screen; no inline settings here on web.
 
     return (
         <View style={styles.container}>
             {/* Header provided by app-level navigation; settings accessible via top-right button. */}
             <View style={styles.mapPlaceholder}>
-                <Text style={styles.mapText}>
-                    Map view: {visible.length} streets + {activities.length} activities
-                </Text>
-                <Text style={styles.centerText}>
-                    Center: {center.name} ({center.latitude.toFixed(4)}, {center.longitude.toFixed(4)})
-                </Text>
+                <WebMapView center={center} streets={visible} activities={activityPolylines} />
             </View>
 
             <View style={styles.controls}>
