@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, Button, StyleSheet, Alert, FlatList, ScrollView, Platform } from 'react-native';
 import Constants from 'expo-constants';
-import { useAppState } from '../state/StateContext';
+import { useAppState, StravaActivity } from '../state/StateContext';
 
 // Only import Expo modules on native platforms
 let AuthSession: any = null;
@@ -22,7 +22,7 @@ const STRAVA_CLIENT_SECRET = expoExtra.STRAVA_CLIENT_SECRET || '';
 const STRAVA_SCOPES = 'activity:read_all';
 
 export default function SyncScreen() {
-  const { setActivities: setStateActivities } = useAppState();
+  const { setActivities: setStateActivities, markStreetsRunByActivities } = useAppState();
   const [syncing, setSyncing] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
@@ -129,18 +129,23 @@ export default function SyncScreen() {
     }
   }
 
-  async function doSyncToStrava() {
-    if (!accessToken) {
-      Alert.alert('Not connected', 'Please connect to Strava first.');
-      return;
-    }
+async function doSyncToStrava() {
+  if (!accessToken) {
+    Alert.alert('Not connected', 'Please connect to Strava first.');
+    return;
+  }
 
-    setSyncing(true);
-    setMessage(null);
+  setSyncing(true);
+  setMessage(null);
 
-    try {
+  try {
+    let page = 1;
+    const perPage = 200; // Strava max
+    const allActivities = [];
+
+    while (true) {
       const res = await fetch(
-        'https://www.strava.com/api/v3/athlete/activities?per_page=200',
+        `https://www.strava.com/api/v3/athlete/activities?per_page=${perPage}&page=${page}`,
         {
           headers: { Authorization: `Bearer ${accessToken}` },
         }
@@ -152,26 +157,46 @@ export default function SyncScreen() {
         return;
       }
 
-      const rawData = await res.json();
+      const data = await res.json();
 
-      const activitiesForState = rawData.map((act: any) => ({
-        id: String(act.id),
-        name: act.name,
-        type: act.type,
-        distance: act.distance,
-        date: act.start_date,
-        polyline: act.map?.summary_polyline || '',
-      }));
+      // Stop when Strava returns an empty array
+      if (!Array.isArray(data) || data.length === 0) {
+        break;
+      }
 
-      setActivities(rawData);
-      setStateActivities(activitiesForState);
-      setMessage(`Loaded ${rawData.length} activities`);
-    } catch (err: any) {
-      setMessage(`Sync error: ${err.message}`);
+      allActivities.push(...data);
+      page++;
     }
 
-    setSyncing(false);
+    // Map for your UI state
+    const activitiesForState: StravaActivity[] = allActivities.map((act) => ({
+      id: act.id,
+      name: act.name,
+      type: act.type,
+      distance: act.distance,
+      date: act.start_date,
+      polyline: act.map?.summary_polyline || '',
+      moving_time: act.moving_time,
+      elapsed_time: act.elapsed_time,
+      start_date: act.start_date,
+    }));
+
+    setActivities(allActivities);
+    setStateActivities(activitiesForState);
+    // Mark streets that were covered by these activities (if streets already loaded)
+    try {
+      markStreetsRunByActivities(activitiesForState);
+    } catch (e) {
+      // ignore if context not available
+    }
+    setMessage(`Loaded ${allActivities.length} activities`);
+  } catch (err: any) {
+    setMessage(`Sync error: ${err.message}`);
   }
+
+  setSyncing(false);
+}
+
 
   return (
     <ScrollView style={styles.container}>

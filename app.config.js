@@ -3,8 +3,8 @@ dotenv.config();
 
 module.exports = () => ({
     expo: {
-        name: "streetsweeper",
-        slug: "streetsweeper",
+        name: "Streetsweeper",
+        slug: "Streetsweeper",
         version: "1.0.0",
         orientation: "portrait",
         icon: "./assets/icon.png",

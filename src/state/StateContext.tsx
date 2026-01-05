@@ -1,5 +1,15 @@
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
-import { StravaActivity } from '../services/Services';
+
+export type StravaActivity = {
+    id: number;
+    name: string;
+    distance: number;
+    moving_time: number;
+    elapsed_time: number;
+    start_date: string;
+    polyline?: string;
+    // add more fields as needed
+};
 
 type Center = { name: string; latitude: number; longitude: number };
 type Coord = { latitude: number; longitude: number };
@@ -20,6 +30,7 @@ type StateContextType = {
   showUnrun: boolean;
   setShowUnrun: (v: boolean) => void;
   loadStreetsFromOSM: (center?: Center, miles?: number) => Promise<void>;
+  markStreetsRunByActivities: (acts?: StravaActivity[]) => void;
 };
 
 const ctx = createContext<StateContextType | undefined>(undefined);
@@ -89,6 +100,82 @@ export const StateProvider = ({ children }: { children: ReactNode }) => {
     }
   }
 
+  function pointDistanceMiles(a: { latitude: number; longitude: number }, b: { latitude: number; longitude: number }) {
+    const toRad = (v: number) => (v * Math.PI) / 180;
+    const R = 6371e3; // meters
+    const φ1 = toRad(a.latitude);
+    const φ2 = toRad(b.latitude);
+    const Δφ = toRad(b.latitude - a.latitude);
+    const Δλ = toRad(b.longitude - a.longitude);
+    const aa = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+    const c = 2 * Math.atan2(Math.sqrt(aa), Math.sqrt(1 - aa));
+    const meters = R * c;
+    return meters / 1609.344;
+  }
+
+  // Mark streets as completed if any activity passes near the street (within threshold meters)
+  function markStreetsRunByActivities(acts?: StravaActivity[]) {
+    const activitiesToCheck = acts || activities || [];
+    if (!activitiesToCheck || activitiesToCheck.length === 0) return;
+
+    const thresholdMiles = 0.05; // ~80 meters
+
+    setStreets(current =>
+      current.map(st => {
+        if (st.completed) return st;
+        const streetPoints = st.coords || [];
+        // compute min distance between any street point and any activity polyline point
+        let minDist = Infinity;
+        for (const sp of streetPoints) {
+          for (const act of activitiesToCheck) {
+            if (!act.polyline) continue;
+            // decode polyline if needed: act in StateContext stored as StravaActivity with polyline string
+            // but here we expect activitiesToCheck may be StravaActivity[] with polyline strings
+            // decode quickly inline
+            const coords: { latitude: number; longitude: number }[] = [];
+            let index = 0;
+            let lat = 0;
+            let lng = 0;
+            const s = act.polyline || '';
+            while (index < s.length) {
+              let result = 0;
+              let shift = 0;
+              let byte = 0;
+              do {
+                byte = s.charCodeAt(index++) - 63;
+                result |= (byte & 0x1f) << shift;
+                shift += 5;
+              } while (byte >= 0x20);
+              lat += (result & 1) ? ~(result >> 1) : result >> 1;
+
+              result = 0;
+              shift = 0;
+              do {
+                byte = s.charCodeAt(index++) - 63;
+                result |= (byte & 0x1f) << shift;
+                shift += 5;
+              } while (byte >= 0x20);
+              lng += (result & 1) ? ~(result >> 1) : result >> 1;
+
+              coords.push({ latitude: lat / 1e5, longitude: lng / 1e5 });
+            }
+
+            for (const ap of coords) {
+              const d = pointDistanceMiles(sp, ap);
+              if (d < minDist) minDist = d;
+              if (minDist <= thresholdMiles) break;
+            }
+            if (minDist <= thresholdMiles) break;
+          }
+          if (minDist <= thresholdMiles) break;
+        }
+
+        if (minDist <= thresholdMiles) return { ...st, completed: true };
+        return st;
+      })
+    );
+  }
+
   function toggleStreet(id: string) {
     setStreets(s => s.map(st => (st.id === id ? { ...st, completed: !st.completed } : st)));
   }
@@ -120,6 +207,7 @@ export const StateProvider = ({ children }: { children: ReactNode }) => {
         showUnrun,
         setShowUnrun,
         loadStreetsFromOSM,
+        markStreetsRunByActivities,
       }}
     >
       {children}

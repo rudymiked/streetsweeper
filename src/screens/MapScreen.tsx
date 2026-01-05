@@ -168,11 +168,7 @@ export default function MapScreen({ navigation }: any) {
             />
           ))}
         </MapView>
-
-        {/* Controls moved into Settings screen; hidden on main map UI. */}
       </View>
-
-      {/* Settings moved to Settings screen; no inline modal here anymore. */}
     </>
   );
 }

@@ -93,11 +93,8 @@ export default function MapScreen({ navigation }: any) {
         .filter((a: any) => a.polyline)
         .map((a: any) => ({ id: a.id, name: a.name, coords: decodePolyline(a.polyline || '') }));
 
-    // Settings handled via top-level Settings screen; no inline settings here on web.
-
     return (
         <View style={styles.container}>
-            {/* Header provided by app-level navigation; settings accessible via top-right button. */}
             <View style={styles.mapPlaceholder}>
                 <WebMapView center={center} streets={visible} activities={activityPolylines} />
                 <View style={{ position: 'absolute', bottom: 12, left: 12, backgroundColor: 'rgba(255,255,255,0.9)', padding: 8, borderRadius: 8 }}>
@@ -109,8 +106,6 @@ export default function MapScreen({ navigation }: any) {
                     ))}
                 </View>
             </View>
-
-            {/* Controls moved into Settings screen; hidden on main map UI. */}
         </View>
     );
 }
