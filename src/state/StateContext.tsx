@@ -1,5 +1,4 @@
 import React, { createContext, useContext, useState, ReactNode } from 'react';
-import { streetWasRun } from '../utils/streetMatching';
 
 export type StravaActivity = {
   // Core identifiers
@@ -286,6 +285,25 @@ export const StateProvider = ({ children }: { children: ReactNode }) => {
     const o4 = orient(b1, b2, a2);
     return o1 * o2 <= 0 && o3 * o4 <= 0;
   }
+
+  function streetWasRun(streetCoords: any[], activityCoords: any[], toleranceMeters = 20) {
+  if (!streetCoords?.length || !activityCoords?.length) return false;
+
+  for (let i = 0; i < streetCoords.length - 1; i++) {
+    const a1 = streetCoords[i];
+    const a2 = streetCoords[i + 1];
+
+    for (let j = 0; j < activityCoords.length - 1; j++) {
+      const b1 = activityCoords[j];
+      const b2 = activityCoords[j + 1];
+
+      const dist = segmentToSegmentDistanceMeters(a1, a2, b1, b2);
+      if (dist < toleranceMeters) return true;
+    }
+  }
+
+  return false;
+}
 
   function segmentToSegmentDistanceMeters(a1deg: { latitude: number; longitude: number }, a2deg: { latitude: number; longitude: number }, b1deg: { latitude: number; longitude: number }, b2deg: { latitude: number; longitude: number }) {
     // use mean latitude as reference for local projection
