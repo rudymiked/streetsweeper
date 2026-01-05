@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, Button, TextInput, Alert, Platform, Switch, ActivityIndicator } from 'react-native';
-import { useAppState } from '../state/StateContext';
+import { StravaActivity, useAppState } from '../state/StateContext';
 import Constants from 'expo-constants';
 import { IconButton } from 'react-native-paper';
 
@@ -12,8 +12,10 @@ if (!isWeb) {
 }
 
 export default function SettingsScreen({ closePanel }: { closePanel: () => void }) {
-  const { center, setCenter, showCompleted, setShowCompleted, showUnrun, setShowUnrun, loadStreetsFromOSM, activities, markStreetsRunByActivities, radiusMiles, setActivities } = useAppState();
+  const { center, setCenter, showCompleted, setShowCompleted, showUnrun, setShowUnrun, loadStreetsFromOSM, activities, markStreetsRunByActivities, radiusMiles, setActivities, loadStreetsFromStravaActivities } = useAppState();
   const [loadingOSM, setLoadingOSM] = useState(false);
+  const [loadingStrava, setLoadingStrava] = useState(false);
+  const [loadingAll, setLoadingAll] = useState(false);
   const [addressInput, setAddressInput] = useState('');
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
@@ -98,26 +100,34 @@ export default function SettingsScreen({ closePanel }: { closePanel: () => void 
     markStreetsRunByActivities(activities);
   }
 
-  async function loadStravaActivities(accessToken: string) {
+  async function loadStravaActivities(accessToken: string): Promise<StravaActivity[]> {
     setStatusMessage('Loading activities...');
 
-    const actRes = await fetch(
-      'https://www.strava.com/api/v3/athlete/activities?per_page=200',
-      { headers: { Authorization: `Bearer ${accessToken}` } }
-    );
+    const all: any[] = [];
+    let page = 1;
+    const perPage = 200;
 
-    if (!actRes.ok) throw new Error('Failed to load activities');
+    while (true) {
+      const url = `https://www.strava.com/api/v3/athlete/activities?per_page=${perPage}&page=${page}`;
 
-    const raw = await actRes.json();
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
 
-    return raw.map((act: any) => ({
-      id: act.id,
-      name: act.name,
-      type: act.type,
-      distance: act.distance,
-      date: act.start_date,
-      polyline: act.map?.summary_polyline || '',
-    }));
+      if (!res.ok) {
+        throw new Error(`Failed to load activities (page ${page})`);
+      }
+
+      const batch = await res.json();
+
+      // No more activities → stop
+      if (!batch || batch.length === 0) break;
+
+      all.push(...batch);
+      page += 1;
+    }
+
+    return all;
   }
 
   async function getStravaAuthCode(
@@ -226,34 +236,65 @@ export default function SettingsScreen({ closePanel }: { closePanel: () => void 
     return json.access_token;
   }
 
-  // One-click: connect to Strava, load activities, load OSM streets, apply matching
-  async function connectLoadAll() {
-    const expoExtra = (Constants.expoConfig && Constants.expoConfig.extra) || {};
-    const STRAVA_CLIENT_ID = Number(expoExtra.STRAVA_CLIENT_ID) || 0;
-    const STRAVA_CLIENT_SECRET = expoExtra.STRAVA_CLIENT_SECRET || '';
-    const STRAVA_SCOPES = 'activity:read_all';
-
-    if (!STRAVA_CLIENT_ID || !STRAVA_CLIENT_SECRET) {
-      Alert.alert('Missing Strava settings', 'Please set STRAVA_CLIENT_ID and STRAVA_CLIENT_SECRET in app config');
-      return;
-    }
-
+  async function loadStreetsOnly() {
     setLoadingOSM(true);
-    setStatusMessage('Connecting to Strava...');
-
+    setStatusMessage('Loading streets from OSM...');
     try {
+      await loadAndMatchStreets(center, radiusMiles || 2, []);
+      setStatusMessage('Done');
+      Alert.alert('Done', 'Loaded streets from OpenStreetMap');
+    }
+    catch (err: any) {
+      Alert.alert('Error', err.message || 'Could not load streets');
+      setStatusMessage(err.message || 'Error');
+    }
+    finally {
+      setLoadingOSM(false);
+    }
+  }
+
+  async function loadStrava(): Promise<any> {
+    setLoadingStrava(true);
+    setStatusMessage('Connecting to Strava...');
+    try {
+      const expoExtra = (Constants.expoConfig && Constants.expoConfig.extra) || {};
+      const STRAVA_CLIENT_ID = Number(expoExtra.STRAVA_CLIENT_ID) || 0;
+      const STRAVA_CLIENT_SECRET = expoExtra.STRAVA_CLIENT_SECRET || '';
+      const STRAVA_SCOPES = 'activity:read_all';
+      if (!STRAVA_CLIENT_ID || !STRAVA_CLIENT_SECRET) {
+        Alert.alert('Missing Strava settings', 'Please set STRAVA_CLIENT_ID and STRAVA_CLIENT_SECRET in app config');
+        setStatusMessage('Missing Strava settings');
+        return;
+      }
       const code = await getStravaAuthCode(STRAVA_CLIENT_ID, STRAVA_CLIENT_SECRET, STRAVA_SCOPES);
       if (!code) throw new Error('No auth code received');
-
       setStatusMessage('Exchanging token...');
-      const accessToken = await exchangeStravaToken(code, STRAVA_CLIENT_ID, STRAVA_CLIENT_SECRET);
-
-      // ⬇️ Extracted function #1
+      const accessToken: string = await exchangeStravaToken(code, STRAVA_CLIENT_ID, STRAVA_CLIENT_SECRET);
       const activitiesForState = await loadStravaActivities(accessToken);
-
       setActivities(activitiesForState);
 
-      // ⬇️ Extracted function #2
+      console.log('Loaded activities legnth:', activitiesForState.length);
+
+      await loadStreetsFromStravaActivities(activitiesForState);
+      setStatusMessage('Done');
+      Alert.alert('Done', 'Loaded activities from Strava');
+
+      return activitiesForState;
+    }
+    catch (err: any) {
+      Alert.alert('Error', err.message || 'Could not load activities');
+      setStatusMessage(err.message || 'Error');
+    }
+    finally {
+      setLoadingStrava(false);
+    }
+  }
+
+  // One-click: connect to Strava, load activities, load OSM streets, apply matching
+  async function connectLoadAll() {
+    try {
+      const activitiesForState = await loadStrava();
+
       await loadAndMatchStreets(center, radiusMiles || 2, activitiesForState);
 
       setStatusMessage('Done');
@@ -263,7 +304,7 @@ export default function SettingsScreen({ closePanel }: { closePanel: () => void 
       Alert.alert('Error', err.message || 'Operation failed');
       setStatusMessage(err.message || 'Error');
     } finally {
-      setLoadingOSM(false);
+      setLoadingAll(false);
     }
   }
 
@@ -297,10 +338,14 @@ export default function SettingsScreen({ closePanel }: { closePanel: () => void 
         }}
       /> */}
 
-      <Button color={'#FC4C02'} title={loadingOSM ? 'Working...' : 'Connect to Strava & Populate Streets'} onPress={connectLoadAll} />
+      <Button color={'#FC4C02'} title={loadingAll ? 'Working...' : 'Connect to Strava & Populate Streets'} onPress={connectLoadAll} />
+
+      <Button title={loadingOSM ? 'Working...' : 'Only Load Streets'} onPress={loadStreetsOnly} />
+      <View style={{ height: 12 }} />
+      <Button title={loadingStrava ? 'Working...' : 'Connect to and Load Strava'} onPress={loadStrava} />
       {statusMessage && (
         <View style={{ marginTop: 8, flexDirection: 'row', alignItems: 'center' }}>
-          {statusMessage !== 'Done' && loadingOSM && <ActivityIndicator style={{ marginRight: 8 }} />}
+          {statusMessage !== 'Done' && (loadingOSM || loadingStrava || loadingAll) && <ActivityIndicator style={{ marginRight: 8 }} />}
           <Text>{statusMessage}</Text>
         </View>
       )}

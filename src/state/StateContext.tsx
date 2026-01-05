@@ -2,15 +2,94 @@ import React, { createContext, useContext, useState, ReactNode } from 'react';
 import { streetWasRun } from '../utils/streetMatching';
 
 export type StravaActivity = {
+  // Core identifiers
   id: number;
   name: string;
+  type: string;
+  sport_type: string;
+  resource_state: number;
+
+  // Timing + distance
   distance: number;
   moving_time: number;
   elapsed_time: number;
   start_date: string;
-  polyline?: string;
-  // add more fields as needed
+  start_date_local: string;
+  utc_offset: number;
+
+  // Location
+  start_latlng: [number, number] | null;
+  end_latlng: [number, number] | null;
+  location_city: string | null;
+  location_state: string | null;
+  location_country: string | null;
+  timezone: string;
+
+  // Elevation
+  elev_high: number;
+  elev_low: number;
+  total_elevation_gain: number;
+
+  // Heart rate
+  has_heartrate: boolean;
+  average_heartrate?: number;
+  max_heartrate?: number;
+  heartrate_opt_out: boolean;
+  display_hide_heartrate_option: boolean;
+
+  // Speed / power
+  average_speed: number;
+  max_speed: number;
+  average_watts?: number;
+  kilojoules?: number;
+  device_watts: boolean;
+
+  // Counts
+  achievement_count: number;
+  athlete_count: number;
+  comment_count: number;
+  kudos_count: number;
+  photo_count: number;
+  total_photo_count: number;
+  pr_count: number;
+
+  // Flags
+  commute: boolean;
+  manual: boolean;
+  private: boolean;
+  flagged: boolean;
+  trainer: boolean;
+  from_accepted_tag: boolean;
+  has_kudoed: boolean;
+
+  // Athlete + gear
+  athlete: {
+    id: number;
+    resource_state: number;
+  };
+  gear_id: string | null;
+  device_name?: string;
+
+  // Map + polyline
+  map: {
+    id: string;
+    summary_polyline: string | null;
+    resource_state: number;
+  };
+  polyline?: string; // your extracted summary polyline
+  coords: Array<{ latitude: number; longitude: number }>; // decoded polyline
+
+  // Upload metadata
+  external_id: string | null;
+  upload_id: number | null;
+  upload_id_str: string | null;
+
+  // Misc
+  suffer_score?: number;
+  workout_type?: number;
+  visibility?: string;
 };
+
 
 type Center = { name: string; latitude: number; longitude: number };
 type Coord = { latitude: number; longitude: number };
@@ -32,6 +111,7 @@ type StateContextType = {
   setShowUnrun: (v: boolean) => void;
   loadStreetsFromOSM: (center?: Center, miles?: number) => Promise<void>;
   markStreetsRunByActivities: (activities: StravaActivity[]) => void;
+  loadStreetsFromStravaActivities: (activities: StravaActivity[]) => Promise<void>;
 };
 
 const ctx = createContext<StateContextType | undefined>(undefined);
@@ -46,6 +126,37 @@ export const StateProvider = ({ children }: { children: ReactNode }) => {
   const [showCompleted, setShowCompleted] = useState<boolean>(true);
   const [showUnrun, setShowUnrun] = useState<boolean>(true);
 
+  async function loadStreetsFromStravaActivities(activities: StravaActivity[]) {
+    console.log('Loading streets from Strava activities in state...');
+
+    const streets: Street[] = activities
+      .filter(a => a.map.summary_polyline && a.map.summary_polyline.length > 0)
+      .map(a => {
+        let coords: { latitude: number; longitude: number }[] = [];
+
+        try {
+          const decoded = decodePolyline(a.map.summary_polyline || '');
+          coords = decoded.map((point: Coord) => ({
+            latitude: point.latitude,
+            longitude: point.longitude,
+          }));
+        } catch (err) {
+          console.warn(`Failed to decode polyline for activity ${a.id}`, err);
+        }
+
+        return {
+          id: String(a.id),
+          name: a.name || `Activity ${a.id}`,
+          completed: true,
+          coords,
+        };
+      });
+
+    setStreets(streets);
+    markStreetsRunByActivities(activities);
+
+    console.log(`Loaded ${streets.length} streets from Strava activities`);
+  }
 
   // Load streets from OpenStreetMap via Overpass API within radius (miles) of center.
   async function loadStreetsFromOSM(centerParam?: Center, miles?: number) {
@@ -92,7 +203,6 @@ export const StateProvider = ({ children }: { children: ReactNode }) => {
           } as Street));
 
         setStreets(ways);
-        console.log(`Loaded ${ways.length} streets from ${mirror}`);
         return;
       } catch (err) {
         console.error(`loadStreetsFromOSM attempt ${attempt + 1} error:`, err);
@@ -198,15 +308,14 @@ export const StateProvider = ({ children }: { children: ReactNode }) => {
     setStreets(prev =>
       prev.map(street => {
         const wasRun = activities.some(act => {
-          const coords = decodePolyline(act.polyline || '');
-          streetWasRun(street.coords, coords, 15) // 15m wiggle room
+          const coords = decodePolyline(act.map.summary_polyline || '');
+          return streetWasRun(street.coords, coords, 30);
         });
 
         return { ...street, completed: wasRun };
       })
     );
   }
-
 
   function toggleStreet(id: string) {
     setStreets(s => s.map(st => (st.id === id ? { ...st, completed: !st.completed } : st)));
@@ -240,6 +349,7 @@ export const StateProvider = ({ children }: { children: ReactNode }) => {
         setShowUnrun,
         loadStreetsFromOSM,
         markStreetsRunByActivities,
+        loadStreetsFromStravaActivities,
       }}
     >
       {children}
