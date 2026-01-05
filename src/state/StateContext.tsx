@@ -1,14 +1,15 @@
-import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
+import React, { createContext, useContext, useState, ReactNode } from 'react';
+import { streetWasRun } from '../utils/streetMatching';
 
 export type StravaActivity = {
-    id: number;
-    name: string;
-    distance: number;
-    moving_time: number;
-    elapsed_time: number;
-    start_date: string;
-    polyline?: string;
-    // add more fields as needed
+  id: number;
+  name: string;
+  distance: number;
+  moving_time: number;
+  elapsed_time: number;
+  start_date: string;
+  polyline?: string;
+  // add more fields as needed
 };
 
 type Center = { name: string; latitude: number; longitude: number };
@@ -30,7 +31,7 @@ type StateContextType = {
   showUnrun: boolean;
   setShowUnrun: (v: boolean) => void;
   loadStreetsFromOSM: (center?: Center, miles?: number) => Promise<void>;
-  markStreetsRunByActivities: (acts?: StravaActivity[]) => void;
+  markStreetsRunByActivities: (activities: StravaActivity[]) => void;
 };
 
 const ctx = createContext<StateContextType | undefined>(undefined);
@@ -113,68 +114,99 @@ export const StateProvider = ({ children }: { children: ReactNode }) => {
     return meters / 1609.344;
   }
 
-  // Mark streets as completed if any activity passes near the street (within threshold meters)
-  function markStreetsRunByActivities(acts?: StravaActivity[]) {
-    const activitiesToCheck = acts || activities || [];
-    if (!activitiesToCheck || activitiesToCheck.length === 0) return;
+  // Better matching: compute segment-to-segment minimum distance (meters) between
+  // activity polylines and street polylines. If below threshold, mark street completed.
+  function decodePolyline(polylineStr: string) {
+    const coords: { latitude: number; longitude: number }[] = [];
+    let index = 0;
+    let lat = 0;
+    let lng = 0;
 
-    const thresholdMiles = 0.05; // ~80 meters
+    while (index < polylineStr.length) {
+      let result = 0;
+      let shift = 0;
+      let byte = 0;
 
-    setStreets(current =>
-      current.map(st => {
-        if (st.completed) return st;
-        const streetPoints = st.coords || [];
-        // compute min distance between any street point and any activity polyline point
-        let minDist = Infinity;
-        for (const sp of streetPoints) {
-          for (const act of activitiesToCheck) {
-            if (!act.polyline) continue;
-            // decode polyline if needed: act in StateContext stored as StravaActivity with polyline string
-            // but here we expect activitiesToCheck may be StravaActivity[] with polyline strings
-            // decode quickly inline
-            const coords: { latitude: number; longitude: number }[] = [];
-            let index = 0;
-            let lat = 0;
-            let lng = 0;
-            const s = act.polyline || '';
-            while (index < s.length) {
-              let result = 0;
-              let shift = 0;
-              let byte = 0;
-              do {
-                byte = s.charCodeAt(index++) - 63;
-                result |= (byte & 0x1f) << shift;
-                shift += 5;
-              } while (byte >= 0x20);
-              lat += (result & 1) ? ~(result >> 1) : result >> 1;
+      do {
+        byte = polylineStr.charCodeAt(index++) - 63;
+        result |= (byte & 0x1f) << shift;
+        shift += 5;
+      } while (byte >= 0x20);
 
-              result = 0;
-              shift = 0;
-              do {
-                byte = s.charCodeAt(index++) - 63;
-                result |= (byte & 0x1f) << shift;
-                shift += 5;
-              } while (byte >= 0x20);
-              lng += (result & 1) ? ~(result >> 1) : result >> 1;
+      lat += (result & 1) ? ~(result >> 1) : result >> 1;
 
-              coords.push({ latitude: lat / 1e5, longitude: lng / 1e5 });
-            }
+      result = 0;
+      shift = 0;
+      do {
+        byte = polylineStr.charCodeAt(index++) - 63;
+        result |= (byte & 0x1f) << shift;
+        shift += 5;
+      } while (byte >= 0x20);
 
-            for (const ap of coords) {
-              const d = pointDistanceMiles(sp, ap);
-              if (d < minDist) minDist = d;
-              if (minDist <= thresholdMiles) break;
-            }
-            if (minDist <= thresholdMiles) break;
-          }
-          if (minDist <= thresholdMiles) break;
-        }
+      lng += (result & 1) ? ~(result >> 1) : result >> 1;
 
-        if (minDist <= thresholdMiles) return { ...st, completed: true };
-        return st;
+      coords.push({ latitude: lat / 1e5, longitude: lng / 1e5 });
+    }
+
+    return coords;
+  }
+
+  function degToMeters(p: { latitude: number; longitude: number }, refLat = p.latitude) {
+    const latRad = (refLat * Math.PI) / 180;
+    const mPerDegLat = 111320; // approximate
+    const mPerDegLon = Math.cos(latRad) * 111320;
+    return { x: p.longitude * mPerDegLon, y: p.latitude * mPerDegLat };
+  }
+
+  function pointToSegmentDistanceMeters(pt: { x: number; y: number }, v: { x: number; y: number }, w: { x: number; y: number }) {
+    const l2 = (w.x - v.x) * (w.x - v.x) + (w.y - v.y) * (w.y - v.y);
+    if (l2 === 0) return Math.hypot(pt.x - v.x, pt.y - v.y);
+    const t = Math.max(0, Math.min(1, ((pt.x - v.x) * (w.x - v.x) + (pt.y - v.y) * (w.y - v.y)) / l2));
+    const proj = { x: v.x + t * (w.x - v.x), y: v.y + t * (w.y - v.y) };
+    return Math.hypot(pt.x - proj.x, pt.y - proj.y);
+  }
+
+  function segmentsIntersect(a1: { x: number; y: number }, a2: { x: number; y: number }, b1: { x: number; y: number }, b2: { x: number; y: number }) {
+    function orient(a: { x: number; y: number }, b: { x: number; y: number }, c: { x: number; y: number }) {
+      return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+    }
+    const o1 = orient(a1, a2, b1);
+    const o2 = orient(a1, a2, b2);
+    const o3 = orient(b1, b2, a1);
+    const o4 = orient(b1, b2, a2);
+    return o1 * o2 <= 0 && o3 * o4 <= 0;
+  }
+
+  function segmentToSegmentDistanceMeters(a1deg: { latitude: number; longitude: number }, a2deg: { latitude: number; longitude: number }, b1deg: { latitude: number; longitude: number }, b2deg: { latitude: number; longitude: number }) {
+    // use mean latitude as reference for local projection
+    const meanLat = (a1deg.latitude + a2deg.latitude + b1deg.latitude + b2deg.latitude) / 4;
+    const a1 = degToMeters({ latitude: a1deg.latitude, longitude: a1deg.longitude }, meanLat);
+    const a2 = degToMeters({ latitude: a2deg.latitude, longitude: a2deg.longitude }, meanLat);
+    const b1 = degToMeters({ latitude: b1deg.latitude, longitude: b1deg.longitude }, meanLat);
+    const b2 = degToMeters({ latitude: b2deg.latitude, longitude: b2deg.longitude }, meanLat);
+
+    if (segmentsIntersect(a1, a2, b1, b2)) return 0;
+
+    const d1 = pointToSegmentDistanceMeters(a1, b1, b2);
+    const d2 = pointToSegmentDistanceMeters(a2, b1, b2);
+    const d3 = pointToSegmentDistanceMeters(b1, a1, a2);
+    const d4 = pointToSegmentDistanceMeters(b2, a1, a2);
+    return Math.min(d1, d2, d3, d4);
+  }
+
+  function markStreetsRunByActivities(activities: StravaActivity[]) {
+    setStreets(prev =>
+      prev.map(street => {
+        const wasRun = activities.some(act => {
+          const coords = decodePolyline(act.polyline || '');
+          streetWasRun(street.coords, coords, 15) // 15m wiggle room
+        });
+
+        return { ...street, completed: wasRun };
       })
     );
   }
+
 
   function toggleStreet(id: string) {
     setStreets(s => s.map(st => (st.id === id ? { ...st, completed: !st.completed } : st)));

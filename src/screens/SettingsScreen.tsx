@@ -90,6 +90,142 @@ export default function SettingsScreen({ closePanel }: { closePanel: () => void 
     }
   }
 
+  async function loadAndMatchStreets(center: any, radiusMiles: number, activities: any[]) {
+    setStatusMessage('Loading streets from OSM...');
+    await loadStreetsFromOSM(center, radiusMiles);
+
+    setStatusMessage('Matching activities to streets...');
+    markStreetsRunByActivities(activities);
+  }
+
+  async function loadStravaActivities(accessToken: string) {
+    setStatusMessage('Loading activities...');
+
+    const actRes = await fetch(
+      'https://www.strava.com/api/v3/athlete/activities?per_page=200',
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+
+    if (!actRes.ok) throw new Error('Failed to load activities');
+
+    const raw = await actRes.json();
+
+    return raw.map((act: any) => ({
+      id: act.id,
+      name: act.name,
+      type: act.type,
+      distance: act.distance,
+      date: act.start_date,
+      polyline: act.map?.summary_polyline || '',
+    }));
+  }
+
+  async function getStravaAuthCode(
+    clientId: number,
+    clientSecret: string,
+    scopes: string
+  ): Promise<string> {
+    const redirectUriWeb = `${window.location.origin}${window.location.pathname}`;
+
+    if (isWeb) {
+      const authUrl =
+        `https://www.strava.com/oauth/authorize` +
+        `?client_id=${clientId}` +
+        `&response_type=code` +
+        `&redirect_uri=${encodeURIComponent(redirectUriWeb)}` +
+        `&approval_prompt=auto` +
+        `&scope=${encodeURIComponent(scopes)}`;
+
+      const popup = window.open(authUrl, 'strava_auth', 'width=600,height=700');
+      if (!popup) throw new Error('Popup blocked');
+
+      return await new Promise((resolve, reject) => {
+        const timeout = 60000;
+        const interval = 500;
+        let elapsed = 0;
+
+        const id = setInterval(() => {
+          if (!popup || popup.closed) {
+            clearInterval(id);
+            reject(new Error('Popup closed before authorization'));
+            return;
+          }
+
+          try {
+            const params = new URLSearchParams(popup.location.search);
+            const code = params.get('code');
+            if (code) {
+              clearInterval(id);
+              popup.close();
+              resolve(code);
+            }
+          } catch {
+            // Cross-origin until Strava redirects back — ignore
+          }
+
+          elapsed += interval;
+          if (elapsed >= timeout) {
+            clearInterval(id);
+            popup.close();
+            reject(new Error('Authorization timed out'));
+          }
+        }, interval);
+      });
+    }
+
+    // Native (iOS/Android)
+    const AuthSession: any = require('expo-auth-session');
+    const WebBrowser: any = require('expo-web-browser');
+
+    const redirectUri = AuthSession.makeRedirectUri({ preferLocalhost: true });
+
+    const authUrl =
+      `https://www.strava.com/oauth/authorize` +
+      `?client_id=${clientId}` +
+      `&response_type=code` +
+      `&redirect_uri=${encodeURIComponent(redirectUri)}` +
+      `&approval_prompt=auto` +
+      `&scope=${encodeURIComponent(scopes)}`;
+
+    const result = await WebBrowser.openAuthSessionAsync(authUrl, redirectUri);
+
+    if (!result || result.type !== 'success') {
+      throw new Error('Auth cancelled');
+    }
+
+    const params = new URL(result.url).searchParams;
+    const code = params.get('code');
+
+    if (!code) throw new Error('No auth code returned');
+
+    return code;
+  }
+
+  async function exchangeStravaToken(
+    code: string,
+    clientId: number,
+    clientSecret: string
+  ): Promise<string> {
+    const res = await fetch('https://www.strava.com/oauth/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        client_id: clientId,
+        client_secret: clientSecret,
+        code,
+        grant_type: 'authorization_code',
+      }),
+    });
+
+    const json = await res.json();
+
+    if (!res.ok || !json.access_token) {
+      throw new Error('Token exchange failed');
+    }
+
+    return json.access_token;
+  }
+
   // One-click: connect to Strava, load activities, load OSM streets, apply matching
   async function connectLoadAll() {
     const expoExtra = (Constants.expoConfig && Constants.expoConfig.extra) || {};
@@ -106,116 +242,19 @@ export default function SettingsScreen({ closePanel }: { closePanel: () => void 
     setStatusMessage('Connecting to Strava...');
 
     try {
-      let code: string | null = null;
-
-      if (isWeb) {
-        // Open popup to perform OAuth, then poll for redirect with code
-        const redirectUri = `${window.location.origin}${window.location.pathname}`;
-        const authUrl =
-          `https://www.strava.com/oauth/authorize` +
-          `?client_id=${STRAVA_CLIENT_ID}` +
-          `&response_type=code` +
-          `&redirect_uri=${encodeURIComponent(redirectUri)}` +
-          `&approval_prompt=auto` +
-          `&scope=${encodeURIComponent(STRAVA_SCOPES)}`;
-
-        const popup = window.open(authUrl, 'strava_auth', 'width=600,height=700');
-        if (!popup) throw new Error('Popup blocked');
-
-        // Poll for redirect back to our origin
-        setStatusMessage('Waiting for Strava authorization...');
-        code = await new Promise((resolve, reject) => {
-          const timeout = 60000; // 60s
-          const interval = 500;
-          let elapsed = 0;
-          const id = setInterval(() => {
-            if (!popup || popup.closed) {
-              clearInterval(id);
-              reject(new Error('Popup closed before authorization'));
-              return;
-            }
-            try {
-              const params = new URLSearchParams(popup.location.search);
-              const c = params.get('code');
-              if (c) {
-                clearInterval(id);
-                popup.close();
-                resolve(c);
-              }
-            } catch (e) {
-              // cross-origin until redirected back; ignore
-            }
-            elapsed += interval;
-            if (elapsed >= timeout) {
-              clearInterval(id);
-              popup.close();
-              reject(new Error('Authorization timed out'));
-            }
-          }, interval);
-        });
-      } else {
-        // Native flow using expo-auth-session / WebBrowser
-        const AuthSession: any = require('expo-auth-session');
-        const WebBrowser: any = require('expo-web-browser');
-        const redirectUri = AuthSession.makeRedirectUri({ preferLocalhost: true });
-        const authUrl =
-          `https://www.strava.com/oauth/authorize` +
-          `?client_id=${STRAVA_CLIENT_ID}` +
-          `&response_type=code` +
-          `&redirect_uri=${encodeURIComponent(redirectUri)}` +
-          `&approval_prompt=auto` +
-          `&scope=${encodeURIComponent(STRAVA_SCOPES)}`;
-
-        const result = await WebBrowser.openAuthSessionAsync(authUrl, redirectUri);
-        if (!result || result.type !== 'success') throw new Error('Auth cancelled');
-        const returnedUrl = result.url;
-        const params = new URL(returnedUrl).searchParams;
-        code = params.get('code');
-      }
-
+      const code = await getStravaAuthCode(STRAVA_CLIENT_ID, STRAVA_CLIENT_SECRET, STRAVA_SCOPES);
       if (!code) throw new Error('No auth code received');
 
       setStatusMessage('Exchanging token...');
-      // Exchange code for access token
-      const tokenRes = await fetch('https://www.strava.com/oauth/token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          client_id: STRAVA_CLIENT_ID,
-          client_secret: STRAVA_CLIENT_SECRET,
-          code,
-          grant_type: 'authorization_code',
-        }),
-      });
+      const accessToken = await exchangeStravaToken(code, STRAVA_CLIENT_ID, STRAVA_CLIENT_SECRET);
 
-      const tokenJson = await tokenRes.json();
-      if (!tokenRes.ok || !tokenJson.access_token) throw new Error('Token exchange failed');
-      const accessToken = tokenJson.access_token;
+      // ⬇️ Extracted function #1
+      const activitiesForState = await loadStravaActivities(accessToken);
 
-      setStatusMessage('Loading activities...');
-      // Fetch activities (single page for simplicity)
-      const actRes = await fetch('https://www.strava.com/api/v3/athlete/activities?per_page=200', {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
-      if (!actRes.ok) throw new Error('Failed to load activities');
-      const raw = await actRes.json();
-      const activitiesForState = raw.map((act: any) => ({
-        id: act.id,
-        name: act.name,
-        type: act.type,
-        distance: act.distance,
-        date: act.start_date,
-        polyline: act.map?.summary_polyline || '',
-      }));
+      setActivities(activitiesForState);
 
-      // Save activities to context
-      setActivities(activitiesForState as any);
-
-      setStatusMessage('Loading streets from OSM...');
-      await loadStreetsFromOSM(center, radiusMiles || 2);
-
-      setStatusMessage('Matching activities to streets...');
-      markStreetsRunByActivities(activitiesForState as any);
+      // ⬇️ Extracted function #2
+      await loadAndMatchStreets(center, radiusMiles || 2, activitiesForState);
 
       setStatusMessage('Done');
       Alert.alert('Complete', 'Activities and streets loaded and matched');
@@ -241,7 +280,7 @@ export default function SettingsScreen({ closePanel }: { closePanel: () => void 
       <TextInput style={styles.input} placeholder="Enter address" value={addressInput} onChangeText={setAddressInput} />
       <Button title="Set as Center" onPress={useAddress} />
       <View style={{ height: 12 }} />
-      <View style={{ height: 1, backgroundColor: '#ccc', marginVertical: 12, }} /> 
+      <View style={{ height: 1, backgroundColor: '#ccc', marginVertical: 12, }} />
       <View style={{ height: 12 }} />
       {/* <Button
         title={loadingOSM ? 'Loading streets...' : 'Load Streets from OSM'}
@@ -257,7 +296,7 @@ export default function SettingsScreen({ closePanel }: { closePanel: () => void 
           }
         }}
       /> */}
-      
+
       <Button color={'#FC4C02'} title={loadingOSM ? 'Working...' : 'Connect to Strava & Populate Streets'} onPress={connectLoadAll} />
       {statusMessage && (
         <View style={{ marginTop: 8, flexDirection: 'row', alignItems: 'center' }}>
@@ -265,18 +304,6 @@ export default function SettingsScreen({ closePanel }: { closePanel: () => void 
           <Text>{statusMessage}</Text>
         </View>
       )}
-
-      <View style={{ height: 12 }} />
-      <View style={{ height: 1, backgroundColor: '#ccc', marginVertical: 12, }} />
-      <Text style={{ fontSize: 16, fontWeight: '700', marginBottom: 8 }}>Streets</Text>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-        <Text>Show completed</Text>
-        <Switch value={showCompleted} onValueChange={setShowCompleted} />
-      </View>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Text>Show unrun</Text>
-        <Switch value={showUnrun} onValueChange={setShowUnrun} />
-      </View>
     </View>
   );
 }

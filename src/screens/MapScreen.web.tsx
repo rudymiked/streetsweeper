@@ -93,21 +93,67 @@ export default function MapScreen({ navigation }: any) {
         .filter((a: any) => a.polyline)
         .map((a: any) => ({ id: a.id, name: a.name, coords: decodePolyline(a.polyline || '') }));
 
-    return (
-        <View style={styles.container}>
-            <View style={styles.mapPlaceholder}>
-                <WebMapView center={center} streets={visible} activities={activityPolylines} />
-                <View style={{ position: 'absolute', bottom: 12, left: 12, backgroundColor: 'rgba(255,255,255,0.9)', padding: 8, borderRadius: 8 }}>
-                    <Text style={{ fontSize: 12, fontWeight: '700' }}>Debug</Text>
-                    <Text style={{ fontSize: 12 }}>streets: {streetPolylines.length}</Text>
-                    <Text style={{ fontSize: 12 }}>visible: {visible.length}</Text>
-                    {streetPolylines.slice(0,5).map(s => (
-                        <Text key={s.id} style={{ fontSize: 11 }}>{s.id} · {s.completed ? 'done' : 'unrun'} · {s.distanceMiles.toFixed(2)}mi</Text>
-                    ))}
+return (
+    <View style={styles.container}>
+        <View style={styles.mapPlaceholder} pointerEvents="box-none">
+            {/* Map (WebView) */}
+            <WebMapView
+                center={center}
+                streets={visible}
+                activities={activityPolylines}
+                //style={{ flex: 1 }}
+            />
+
+            {/* Overlay controls */}
+            <View
+                style={{
+                    position: 'absolute',
+                    top: 12,
+                    right: 12,
+                    backgroundColor: 'rgba(255,255,255,0.9)',
+                    padding: 8,
+                    borderRadius: 8,
+                    width: 140,
+                    zIndex: 9999,       // iOS
+                    elevation: 20,      // Android
+                }}
+            >
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
+                    <Text style={{ fontSize: 12 }}>Show completed</Text>
+                    <Switch value={showCompleted} onValueChange={setShowCompleted} />
+                </View>
+
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                    <Text style={{ fontSize: 12 }}>Show unrun</Text>
+                    <Switch value={showUnrun} onValueChange={setShowUnrun} />
                 </View>
             </View>
+
+            {/* Debug box */}
+            <View
+                style={{
+                    position: 'absolute',
+                    bottom: 12,
+                    left: 12,
+                    backgroundColor: 'rgba(255,255,255,0.9)',
+                    padding: 8,
+                    borderRadius: 8,
+                    zIndex: 9999,
+                    elevation: 20,
+                }}
+            >
+                <Text style={{ fontSize: 12, fontWeight: '700' }}>Debug</Text>
+                <Text style={{ fontSize: 12 }}>streets: {streetPolylines.length}</Text>
+                <Text style={{ fontSize: 12 }}>visible: {visible.length}</Text>
+                {streetPolylines.slice(0, 5).map(s => (
+                    <Text key={s.id} style={{ fontSize: 11 }}>
+                        {s.id} · {s.completed ? 'done' : 'unrun'} · {s.distanceMiles.toFixed(2)}mi
+                    </Text>
+                ))}
+            </View>
         </View>
-    );
+    </View>
+);
 }
 
 const styles = StyleSheet.create({
