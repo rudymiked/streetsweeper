@@ -9,6 +9,7 @@
     "web": "expo start --web"
   },
   "dependencies": {
+    "@expo/config": "~12.0.12",
     "@react-leaflet/core": "^3.0.0",
     "@react-navigation/drawer": "^7.7.10",
     "@react-navigation/native": "^7.1.26",

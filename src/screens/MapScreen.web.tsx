@@ -26,8 +26,8 @@ export default function MapScreen({ navigation }: any) {
             if (s.coords && s.coords.length > 0) {
                 coords = s.coords;
             } else {
-                const baseLat = (center.latitude || Number.parseFloat(process.env.DEFAULT_MAP_CENTER_LATITUDE!)) + (idx * 0.001 - 0.005);
-                const baseLng = (center.longitude || Number.parseFloat(process.env.DEFAULT_MAP_CENTER_LONGITUDE!)) + (idx * 0.001 - 0.005);
+                const baseLat = (center.latitude || Number.parseFloat(process.env.EXPO_PUBLIC_DEFAULT_MAP_CENTER_LATITUDE!)) + (idx * 0.001 - 0.005);
+                const baseLng = (center.longitude || Number.parseFloat(process.env.EXPO_PUBLIC_DEFAULT_MAP_CENTER_LONGITUDE!)) + (idx * 0.001 - 0.005);
                 coords = [
                     { latitude: baseLat, longitude: baseLng },
                     { latitude: baseLat + 0.0008, longitude: baseLng + 0.0012 },

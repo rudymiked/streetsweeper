@@ -3,7 +3,7 @@ import * as turf from '@turf/turf';
 export function streetWasRun(
   streetCoords: any[],
   activityCoords: any[],
-  toleranceMeters = 15
+  toleranceMeters: number = Number.parseInt(process.env.EXPO_PUBLIC_TOLERANCE_METERS || '30')
 ) {
   if (!streetCoords?.length || !activityCoords?.length) return false;
 
@@ -40,7 +40,7 @@ export function streetWasRun(
 
   // 3. Sample points along the street every 30 meters
   const streetLength = turf.length(simplifiedStreet, { units: 'meters' });
-  const step = 30; // ← increased from 10m to 30m
+  const step = Number.parseInt(process.env.EXPO_PUBLIC_STEP_DISTANCE_METERS || '30'); // ← increased from 10m to 30m
 
   for (let dist = 0; dist <= streetLength; dist += step) {
     const pt = turf.along(simplifiedStreet, dist, { units: 'meters' });

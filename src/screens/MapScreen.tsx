@@ -19,8 +19,8 @@ export default function MapScreen({ navigation }: any) {
 
   // Default region (falls back when center is 0/0)
   const defaultRegion: any = {
-    latitude: center.latitude || process.env.DEFAULT_MAP_CENTER_LATITUDE,
-    longitude: center.longitude || process.env.DEFAULT_MAP_CENTER_LONGITUDE,
+    latitude: center.latitude || process.env.EXPO_PUBLIC_DEFAULT_MAP_CENTER_LATITUDE,
+    longitude: center.longitude || process.env.EXPO_PUBLIC_DEFAULT_MAP_CENTER_LONGITUDE,
     latitudeDelta: 0.02,
     longitudeDelta: 0.02,
   };

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, Button, TextInput, Alert, Platform, Switch, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, Button, TextInput, Alert, Platform, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { StravaActivity, useAppState } from '../state/StateContext';
 import Constants from 'expo-constants';
 import { IconButton } from 'react-native-paper';
@@ -12,7 +12,7 @@ if (!isWeb) {
 }
 
 export default function SettingsScreen({ closePanel }: { closePanel: () => void }) {
-  const { center, setCenter, showCompleted, setShowCompleted, showUnrun, setShowUnrun, loadStreetsFromOSM, activities, markStreetsRunByActivities, radiusMiles, setActivities, loadStreetsFromStravaActivities } = useAppState();
+  const { center, setCenter, showCompleted, setShowCompleted, showUnrun, setShowUnrun, loadStreetsFromOSM, activities, markStreetsRunByActivities, radiusMiles, setActivities, loadStreetsFromStravaActivities, setRadiusMiles } = useAppState();
   const [loadingOSM, setLoadingOSM] = useState(false);
   const [loadingStrava, setLoadingStrava] = useState(false);
   const [loadingAll, setLoadingAll] = useState(false);
@@ -108,7 +108,7 @@ export default function SettingsScreen({ closePanel }: { closePanel: () => void 
     const perPage = 200;
 
     while (true) {
-      const url = `https://www.strava.com/api/v3/athlete/activities?per_page=${perPage}&page=${page}`;
+      const url = `${process.env.EXPO_PUBLIC_STRAVA_API_BASE_URL}/athlete/activities?per_page=${perPage}&page=${page}`;
 
       const res = await fetch(url, {
         headers: { Authorization: `Bearer ${accessToken}` },
@@ -139,7 +139,7 @@ export default function SettingsScreen({ closePanel }: { closePanel: () => void 
 
     if (isWeb) {
       const authUrl =
-        `https://www.strava.com/oauth/authorize` +
+        `${process.env.EXPO_PUBLIC_STRAVA_AUTHORIZE_URL}` +
         `?client_id=${clientId}` +
         `&response_type=code` +
         `&redirect_uri=${encodeURIComponent(redirectUriWeb)}` +
@@ -190,7 +190,7 @@ export default function SettingsScreen({ closePanel }: { closePanel: () => void 
     const redirectUri = AuthSession.makeRedirectUri({ preferLocalhost: true });
 
     const authUrl =
-      `https://www.strava.com/oauth/authorize` +
+      `${process.env.EXPO_PUBLIC_STRAVA_AUTHORIZE_URL}` +
       `?client_id=${clientId}` +
       `&response_type=code` +
       `&redirect_uri=${encodeURIComponent(redirectUri)}` +
@@ -216,7 +216,7 @@ export default function SettingsScreen({ closePanel }: { closePanel: () => void 
     clientId: number,
     clientSecret: string
   ): Promise<string> {
-    const res = await fetch('https://www.strava.com/oauth/token', {
+    const res = await fetch(`${process.env.EXPO_PUBLIC_STRAVA_AUTHORIZE_TOKEN_URL}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -323,20 +323,6 @@ export default function SettingsScreen({ closePanel }: { closePanel: () => void 
       <View style={{ height: 12 }} />
       <View style={{ height: 1, backgroundColor: '#ccc', marginVertical: 12, }} />
       <View style={{ height: 12 }} />
-      {/* <Button
-        title={loadingOSM ? 'Loading streets...' : 'Load Streets from OSM'}
-        onPress={async () => {
-          try {
-            setLoadingOSM(true);
-            await loadStreetsFromOSM(center, 2);
-            Alert.alert('Done', 'Loaded streets from OpenStreetMap');
-          } catch (err: any) {
-            Alert.alert('Error', err.message || 'Could not load streets');
-          } finally {
-            setLoadingOSM(false);
-          }
-        }}
-      /> */}
 
       <Button color={'#FC4C02'} title={loadingAll ? 'Working...' : 'Connect to Strava & Populate Streets'} onPress={connectLoadAll} />
 
@@ -349,6 +335,19 @@ export default function SettingsScreen({ closePanel }: { closePanel: () => void 
           <Text>{statusMessage}</Text>
         </View>
       )}
+      <View style={{ height: 12 }} />
+      <View style={{ height: 1, backgroundColor: '#ccc', marginVertical: 12, }} />
+      <View style={{ height: 12 }} />
+
+      <Text style={styles.title}>Radius: {radiusMiles.toFixed(1)} mi</Text>
+      <View style={styles.container}>
+        <TouchableOpacity onPress={() => setRadiusMiles(Math.max(0.5, +(radiusMiles - 0.5).toFixed(1)))} style={styles.input}>
+          <Text>-</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => setRadiusMiles(Math.min(5, +(radiusMiles + 0.5).toFixed(1)))} style={styles.input}>
+          <Text>+</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }

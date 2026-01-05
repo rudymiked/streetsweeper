@@ -116,11 +116,11 @@ type StateContextType = {
 
 const ctx = createContext<StateContextType | undefined>(undefined);
 
-const initialCenter: Center = { name: 'Saved Home', latitude: Number.parseFloat(process.env.DEFAULT_MAP_CENTER_LATITUDE || '47.667120970606'), longitude: Number.parseFloat(process.env.DEFAULT_MAP_CENTER_LONGITUDE || '-122.38431335074893') };
+const initialCenter: Center = { name: 'Saved Home', latitude: Number.parseFloat(process.env.EXPO_PUBLIC_DEFAULT_MAP_CENTER_LATITUDE || '47.667120970606'), longitude: Number.parseFloat(process.env.EXPO_PUBLIC_DEFAULT_MAP_CENTER_LONGITUDE || '-122.38431335074893') };
 
 export const StateProvider = ({ children }: { children: ReactNode }) => {
   const [center, setCenter] = useState<Center>(initialCenter);
-  const [radiusMiles, setRadiusMiles] = useState<number>(2);
+  const [radiusMiles, setRadiusMiles] = useState<number>(process.env.DEFAULT_RADIUS_MILES ? Number.parseFloat(process.env.DEFAULT_RADIUS_MILES) : 2);
   const [streets, setStreets] = useState<Street[]>([]);
   const [activities, setActivities] = useState<StravaActivity[]>([]);
   const [showCompleted, setShowCompleted] = useState<boolean>(true);
@@ -153,7 +153,7 @@ export const StateProvider = ({ children }: { children: ReactNode }) => {
       });
 
     setStreets(streets);
-    markStreetsRunByActivities(activities);
+    markStreetsRunByActivities(activities, 15); // use tighter tolerance for self-loaded streets
 
     console.log(`Loaded ${streets.length} streets from Strava activities`);
   }
@@ -161,9 +161,9 @@ export const StateProvider = ({ children }: { children: ReactNode }) => {
   // Load streets from OpenStreetMap via Overpass API within radius (miles) of center.
   async function loadStreetsFromOSM(centerParam?: Center, miles?: number) {
     const mirrors = [
-      'https://overpass-api.de/api/interpreter',
-      'https://overpass.kumi.systems/api/interpreter',
-      'https://z.overpass-api.de/api/interpreter',
+      `${process.env.EXPO_PUBLIC_OSM_OVERPASS_API_URL}`,
+      `${process.env.EXPO_PUBLIC_OSM_OVERPASS_API_URL_TWO}`,
+      `${process.env.EXPO_PUBLIC_OSM_OVERPASS_API_URL_THREE}`,
     ];
 
     const c = centerParam || initialCenter;
@@ -304,12 +304,12 @@ export const StateProvider = ({ children }: { children: ReactNode }) => {
     return Math.min(d1, d2, d3, d4);
   }
 
-  function markStreetsRunByActivities(activities: StravaActivity[]) {
+  function markStreetsRunByActivities(activities: StravaActivity[], toleranceMeters?: number) {
     setStreets(prev =>
       prev.map(street => {
         const wasRun = activities.some(act => {
           const coords = decodePolyline(act.map.summary_polyline || '');
-          return streetWasRun(street.coords, coords, 30);
+          return streetWasRun(street.coords, coords, toleranceMeters);
         });
 
         return { ...street, completed: wasRun };
