@@ -1,173 +1,126 @@
-import React, { useMemo, useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Switch, FlatList, TouchableOpacity, Modal } from 'react-native';
-import { useAppState } from '../state/StateContext';
+import React, { useState } from 'react';
+import { Switch, View } from 'react-native';
 import WebMapView from './WebMapView';
+import { useAppState } from '../state/StateContext';
+import Slider from '@react-native-community/slider';
 
-export default function MapScreen({ navigation }: any) {
-    const { streets, center, toggleStreet, activities, showCompleted, setShowCompleted, showUnrun, setShowUnrun, radiusMiles } = useAppState();
+export default function MapScreenWeb() {
+    const {
+        center,
+        streets,
+        activities,
+        showCompleted,
+        setShowCompleted,
+        showUnrun,
+        setShowUnrun,
+        showStravaOverlay,
+        setShowStravaOverlay,
+        radiusMiles,
+        setRadiusMiles,
+    } = useAppState();
 
-    // Generate polylines for each street: prefer stored `s.coords`, fallback to synthetic.
-    function haversineMiles(a: { latitude: number; longitude: number }, b: { latitude: number; longitude: number }) {
-        const toRad = (v: number) => (v * Math.PI) / 180;
-        const R = 6371e3; // meters
-        const φ1 = toRad(a.latitude);
-        const φ2 = toRad(b.latitude);
-        const Δφ = toRad(b.latitude - a.latitude);
-        const Δλ = toRad(b.longitude - a.longitude);
-        const aa = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
-        const c = 2 * Math.atan2(Math.sqrt(aa), Math.sqrt(1 - aa));
-        const meters = R * c;
-        return meters / 1609.344;
-    }
+    const [sidebarOpen, setSidebarOpen] = useState(true);
 
-    const streetPolylines = useMemo(() => {
-        return streets.map((s, idx) => {
-            let coords: any[] = [];
-            if (s.coords && s.coords.length > 0) {
-                coords = s.coords;
-            } else {
-                const baseLat = (center.latitude || Number.parseFloat(process.env.EXPO_PUBLIC_DEFAULT_MAP_CENTER_LATITUDE!)) + (idx * 0.001 - 0.005);
-                const baseLng = (center.longitude || Number.parseFloat(process.env.EXPO_PUBLIC_DEFAULT_MAP_CENTER_LONGITUDE!)) + (idx * 0.001 - 0.005);
-                coords = [
-                    { latitude: baseLat, longitude: baseLng },
-                    { latitude: baseLat + 0.0008, longitude: baseLng + 0.0012 },
-                ];
-            }
+    const visible = streets.filter((s) => {
+        const centroid = s.coords[Math.floor(s.coords.length / 2)];
+        const dx = centroid.latitude - center.latitude;
+        const dy = centroid.longitude - center.longitude;
+        const approxMiles = Math.sqrt(dx * dx + dy * dy) * 69; // rough
+        return (
+            (s.completed ? showCompleted : showUnrun) &&
+            approxMiles <= radiusMiles
+        );
+    });
 
-            const centroid = coords.reduce((acc, c) => ({ latitude: acc.latitude + c.latitude, longitude: acc.longitude + c.longitude }), { latitude: 0, longitude: 0 });
-            centroid.latitude /= coords.length;
-            centroid.longitude /= coords.length;
-
-            const distanceMiles = haversineMiles(center, centroid);
-
-            return { id: s.id, name: s.name, completed: s.completed, coords, distanceMiles };
-        });
-    }, [streets, center.latitude, center.longitude, radiusMiles]);
-
-    const visible = streetPolylines.filter(sp => (sp.completed ? showCompleted : showUnrun) && sp.distanceMiles <= (radiusMiles || 2));
-
-    useEffect(() => {
-        console.log('streetPolylines (sample 10):', streetPolylines.slice(0, 10));
-        console.log('visible (sample 10):', visible.slice(0, 10));
-    }, [streetPolylines, visible]);
-
-    // Decode activity polylines (same algorithm as native map screen)
-    function decodePolyline(polylineStr: string) {
-        const coords: any[] = [];
-        let index = 0;
-        let lat = 0;
-        let lng = 0;
-
-        while (index < polylineStr.length) {
-            let result = 0;
-            let shift = 0;
-            let byte = 0;
-
-            do {
-                byte = polylineStr.charCodeAt(index) - 63;
-                result |= (byte & 0x1f) << shift;
-                shift += 5;
-                index += 1;
-            } while (byte >= 0x20);
-
-            lat += (result & 1) ? ~(result >> 1) : result >> 1;
-
-            result = 0;
-            shift = 0;
-            do {
-                byte = polylineStr.charCodeAt(index) - 63;
-                result |= (byte & 0x1f) << shift;
-                shift += 5;
-                index += 1;
-            } while (byte >= 0x20);
-
-            lng += (result & 1) ? ~(result >> 1) : result >> 1;
-
-            coords.push({ latitude: lat / 1e5, longitude: lng / 1e5 });
-        }
-
-        return coords;
-    }
-
-    const activityPolylines = activities
-        .filter((a: any) => a.polyline)
-        .map((a: any) => ({ id: a.id, name: a.name, coords: decodePolyline(a.polyline || '') }));
-
-return (
-    <View style={styles.container}>
-        <View style={styles.mapPlaceholder} pointerEvents="box-none">
-            {/* Map (WebView) */}
+    return (
+        <View style={styles.container}>
             <WebMapView
                 center={center}
                 streets={visible}
-                activities={activityPolylines}
-                //style={{ flex: 1 }}
+                activities={activities}
+                showStravaOverlay={showStravaOverlay}
             />
 
-            {/* Overlay controls */}
-            <View
-                style={{
-                    position: 'absolute',
-                    top: 12,
-                    right: 12,
-                    backgroundColor: 'rgba(255,255,255,0.9)',
-                    padding: 8,
-                    borderRadius: 8,
-                    width: 140,
-                    zIndex: 9999,       // iOS
-                    elevation: 20,      // Android
-                }}
-            >
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
-                    <Text style={{ fontSize: 12 }}>Show completed</Text>
-                    <Switch value={showCompleted} onValueChange={setShowCompleted} />
-                </View>
+            {/* Debug Overlay */}
+            <div style={styles.debugOverlay}>
+                <div>Streets: {streets.length}</div>
+                <div>Visible: {visible.length}</div>
+                <div>Activities: {activities.length}</div>
+                <div>Radius: {radiusMiles.toFixed(1)} mi</div>
+            </div>
 
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                    <Text style={{ fontSize: 12 }}>Show unrun</Text>
-                    <Switch value={showUnrun} onValueChange={setShowUnrun} />
-                </View>
-            </View>
+            {/* Sidebar */}
+            {sidebarOpen && (
+                <View style={styles.sidebar}>
+                    <div style={styles.sidebarTitle}>Controls</div>
 
-            {/* Debug box */}
-            <View
-                style={{
-                    position: 'absolute',
-                    bottom: 12,
-                    left: 12,
-                    backgroundColor: 'rgba(255,255,255,0.9)',
-                    padding: 8,
-                    borderRadius: 8,
-                    zIndex: 9999,
-                    elevation: 20,
-                }}
+                    <View style={styles.row}>
+                        <div>Show Completed</div>
+                        <Switch value={showCompleted} onValueChange={setShowCompleted} />
+                    </View>
+
+                    <View style={styles.row}>
+                        <div>Show Unrun</div>
+                        <Switch value={showUnrun} onValueChange={setShowUnrun} />
+                    </View>
+
+                    <View style={styles.row}>
+                        <div>Strava Overlay</div>
+                        <Switch value={showStravaOverlay} onValueChange={setShowStravaOverlay} />
+                    </View>
+
+                    <div style={styles.sliderLabel}>Radius: {radiusMiles.toFixed(1)} mi</div>
+                    <Slider
+                        minimumValue={0.5}
+                        maximumValue={5}
+                        step={0.1}
+                        value={radiusMiles}
+                        onValueChange={setRadiusMiles}
+                        style={{ width: '100%' }}
+                    />
+                </View>
+            )}
+
+            <button
+                style={styles.hamburger}
+                onClick={() => setSidebarOpen(!sidebarOpen)}
             >
-                <Text style={{ fontSize: 12, fontWeight: '700' }}>Debug</Text>
-                <Text style={{ fontSize: 12 }}>streets: {streetPolylines.length}</Text>
-                <Text style={{ fontSize: 12 }}>visible: {visible.length}</Text>
-                {streetPolylines.slice(0, 5).map(s => (
-                    <Text key={s.id} style={{ fontSize: 11 }}>
-                        {s.id} · {s.completed ? 'done' : 'unrun'} · {s.distanceMiles.toFixed(2)}mi
-                    </Text>
-                ))}
-            </View>
+                ☰
+            </button>
         </View>
-    </View>
-);
+    );
 }
 
-const styles = StyleSheet.create({
+const styles: any = {
     container: { flex: 1 },
-    mapPlaceholder: { flex: 1, backgroundColor: '#e8f4f8', justifyContent: 'center', alignItems: 'center', padding: 16 },
-    mapText: { fontSize: 16, fontWeight: '600', textAlign: 'center' },
-    centerText: { fontSize: 12, marginTop: 8, textAlign: 'center', color: '#666' },
-    controls: { position: 'absolute', top: 12, left: 12, right: 12, maxHeight: '40%', backgroundColor: 'rgba(255,255,255,0.95)', padding: 12, borderRadius: 8 },
-    title: { fontSize: 16, fontWeight: '700' },
-    row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 },
-    item: { paddingVertical: 8, borderBottomWidth: 1, borderColor: '#eee', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-    modal: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-    modalContent: { backgroundColor: '#fff', padding: 16, borderTopLeftRadius: 12, borderTopRightRadius: 12 },
-    modalTitle: { fontSize: 18, fontWeight: '700', marginBottom: 12 },
-    input: { borderWidth: 1, borderColor: '#ccc', borderRadius: 4, padding: 8, marginVertical: 8 },
-    header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#eee' },
-});
+    debugOverlay: {
+        position: 'absolute',
+        top: 20,
+        left: 20,
+        background: 'rgba(0,0,0,0.55)',
+        color: 'white',
+        padding: 8,
+        borderRadius: 6,
+        fontSize: 12,
+        zIndex: 9999,
+    },
+    sidebar: {
+        position: 'absolute',
+        top: 70,
+        right: 20,
+        width: 220,
+        background: 'white',
+        padding: 12,
+        borderRadius: 8,
+        boxShadow: '0 2px 6px rgba(0,0,0,0.2)',
+        zIndex: 9999,
+    },
+    hamburger: {
+        position: 'absolute',
+        top: 20,
+        right: 20,
+        fontSize: 22,
+        padding: 8,
+        zIndex: 9999,
+    },
+};
