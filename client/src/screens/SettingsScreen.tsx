@@ -1,10 +1,20 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, Button, TextInput, Alert, Platform, ActivityIndicator, TouchableOpacity } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  Button,
+  TextInput,
+  Alert,
+  Platform,
+  ActivityIndicator,
+  TouchableOpacity,
+} from 'react-native';
 import { StravaActivity, useAppState } from '../state/StateContext';
 import Constants from 'expo-constants';
 import { IconButton } from 'react-native-paper';
+import { sleep } from '../utils/utils';
 
-// Only import expo-location on native platforms
 let Location: any = null;
 const isWeb = typeof Platform === 'undefined' || Platform?.OS === 'web';
 if (!isWeb) {
@@ -12,33 +22,47 @@ if (!isWeb) {
 }
 
 export default function SettingsScreen({ closePanel }: { closePanel: () => void }) {
-  const { center, setCenter, showCompleted, setShowCompleted, showUnrun, setShowUnrun, loadStreetsFromOSM, activities, markStreetsRunByActivities, radiusMiles, setActivities, loadStreetsFromStravaActivities, setRadiusMiles } = useAppState();
-  const [loadingOSM, setLoadingOSM] = useState(false);
-  const [loadingStrava, setLoadingStrava] = useState(false);
-  const [loadingAll, setLoadingAll] = useState(false);
+  const {
+    center,
+    setCenter,
+    radiusMiles,
+    setRadiusMiles,
+    loadStreetsFromOSM,
+    loadStreetsFromStravaActivities,
+    loadAndMatchStreets,
+  } = useAppState();
+
+  const [loading, setLoading] = useState({
+    osm: false,
+    strava: false,
+    all: false,
+  });
+
   const [addressInput, setAddressInput] = useState('');
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+
+  function setLoadingFlag(key: keyof typeof loading, value: boolean) {
+    setLoading(prev => ({ ...prev, [key]: value }));
+  }
 
   async function useCurrentLocation() {
     try {
       if (isWeb) {
-        // Use browser Geolocation API on web
         if (!navigator.geolocation) {
           Alert.alert('Geolocation not supported', 'Your browser does not support geolocation');
           return;
         }
         navigator.geolocation.getCurrentPosition(
-          (position) => {
+          position => {
             const { latitude, longitude } = position.coords;
             setCenter({ name: 'Current Location', latitude, longitude });
             Alert.alert('Success', 'Center updated to your current location');
           },
-          (error) => {
+          error => {
             Alert.alert('Error', error.message || 'Could not get location');
           }
         );
       } else {
-        // Use expo-location on native
         if (!Location) throw new Error('expo-location not available');
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status !== 'granted') {
@@ -61,7 +85,6 @@ export default function SettingsScreen({ closePanel }: { closePanel: () => void 
     }
     try {
       if (isWeb) {
-        // Use web geocoding service (OpenStreetMap Nominatim - free, no API key needed)
         const response = await fetch(
           `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(addressInput)}`
         );
@@ -75,7 +98,6 @@ export default function SettingsScreen({ closePanel }: { closePanel: () => void 
         setAddressInput('');
         Alert.alert('Success', 'Center updated to ' + addressInput);
       } else {
-        // Use expo-location on native
         if (!Location) throw new Error('expo-location not available');
         const results = await Location.geocodeAsync(addressInput);
         if (results.length === 0) {
@@ -92,14 +114,6 @@ export default function SettingsScreen({ closePanel }: { closePanel: () => void 
     }
   }
 
-  async function loadAndMatchStreets(center: any, radiusMiles: number, activities: any[]) {
-    setStatusMessage('Loading streets from OSM...');
-    await loadStreetsFromOSM(center, radiusMiles);
-
-    setStatusMessage('Matching activities to streets...');
-    markStreetsRunByActivities(activities);
-  }
-
   async function loadStravaActivities(accessToken: string): Promise<StravaActivity[]> {
     setStatusMessage('Loading activities...');
 
@@ -107,7 +121,7 @@ export default function SettingsScreen({ closePanel }: { closePanel: () => void 
     let page = 1;
     const perPage = 200;
 
-    while (true) {
+    //while (true) {
       const url = `${process.env.EXPO_PUBLIC_STRAVA_API_BASE_URL}/athlete/activities?per_page=${perPage}&page=${page}`;
 
       const res = await fetch(url, {
@@ -119,14 +133,13 @@ export default function SettingsScreen({ closePanel }: { closePanel: () => void 
       }
 
       const batch = await res.json();
-
-      // No more activities → stop
-      if (!batch || batch.length === 0) break;
+      //if (!batch || batch.length === 0) break;
 
       all.push(...batch);
       page += 1;
-    }
+    //}
 
+    console.log(`Loaded ${all.length} activities from Strava`);
     return all;
   }
 
@@ -170,7 +183,7 @@ export default function SettingsScreen({ closePanel }: { closePanel: () => void 
               resolve(code);
             }
           } catch {
-            // Cross-origin until Strava redirects back — ignore
+            // ignore cross-origin until redirect
           }
 
           elapsed += interval;
@@ -183,7 +196,6 @@ export default function SettingsScreen({ closePanel }: { closePanel: () => void 
       });
     }
 
-    // Native (iOS/Android)
     const AuthSession: any = require('expo-auth-session');
     const WebBrowser: any = require('expo-web-browser');
 
@@ -237,74 +249,86 @@ export default function SettingsScreen({ closePanel }: { closePanel: () => void 
   }
 
   async function loadStreetsOnly() {
-    setLoadingOSM(true);
+    setLoadingFlag('osm', true);
     setStatusMessage('Loading streets from OSM...');
+
     try {
-      await loadAndMatchStreets(center, radiusMiles || 2, []);
+      await loadStreetsFromOSM(center, radiusMiles || 2);
       setStatusMessage('Done');
       Alert.alert('Done', 'Loaded streets from OpenStreetMap');
-    }
-    catch (err: any) {
-      Alert.alert('Error', err.message || 'Could not load streets');
+    } catch (err: any) {
       setStatusMessage(err.message || 'Error');
-    }
-    finally {
-      setLoadingOSM(false);
+      Alert.alert('Error', err.message || 'Could not load streets');
+    } finally {
+      setLoadingFlag('osm', false);
     }
   }
 
-  async function loadStrava(): Promise<any> {
-    setLoadingStrava(true);
+  async function loadStrava({ showLoading = true } = {}): Promise<StravaActivity[]> {
+    if (showLoading) setLoadingFlag('strava', true);
     setStatusMessage('Connecting to Strava...');
+
     try {
       const expoExtra = (Constants.expoConfig && Constants.expoConfig.extra) || {};
       const STRAVA_CLIENT_ID = Number(expoExtra.STRAVA_CLIENT_ID) || 0;
       const STRAVA_CLIENT_SECRET = expoExtra.STRAVA_CLIENT_SECRET || '';
       const STRAVA_SCOPES = 'activity:read_all';
+
       if (!STRAVA_CLIENT_ID || !STRAVA_CLIENT_SECRET) {
-        Alert.alert('Missing Strava settings', 'Please set STRAVA_CLIENT_ID and STRAVA_CLIENT_SECRET in app config');
         setStatusMessage('Missing Strava settings');
-        return;
+        Alert.alert('Missing Strava settings');
+        return [];
       }
+
       const code = await getStravaAuthCode(STRAVA_CLIENT_ID, STRAVA_CLIENT_SECRET, STRAVA_SCOPES);
       if (!code) throw new Error('No auth code received');
+
       setStatusMessage('Exchanging token...');
-      const accessToken: string = await exchangeStravaToken(code, STRAVA_CLIENT_ID, STRAVA_CLIENT_SECRET);
-      const activitiesForState = await loadStravaActivities(accessToken);
-      setActivities(activitiesForState);
+      const accessToken = await exchangeStravaToken(code, STRAVA_CLIENT_ID, STRAVA_CLIENT_SECRET);
 
-      console.log('Loaded activities legnth:', activitiesForState.length);
+      const rawActivities = await loadStravaActivities(accessToken);
 
-      await loadStreetsFromStravaActivities(activitiesForState);
+      console.log(`Loaded ${rawActivities.length} activities from Strava`);
+
+      setStatusMessage('Processing Strava activities...');
+      await sleep(50);
+
+      const enrichedActivities = await loadStreetsFromStravaActivities(rawActivities);
+
       setStatusMessage('Done');
       Alert.alert('Done', 'Loaded activities from Strava');
 
-      return activitiesForState;
-    }
-    catch (err: any) {
-      Alert.alert('Error', err.message || 'Could not load activities');
+      return enrichedActivities;
+    } catch (err: any) {
       setStatusMessage(err.message || 'Error');
-    }
-    finally {
-      setLoadingStrava(false);
+      Alert.alert('Error', err.message || 'Could not load activities');
+      return [];
+    } finally {
+      if (showLoading) setLoadingFlag('strava', false);
     }
   }
 
-  // One-click: connect to Strava, load activities, load OSM streets, apply matching
   async function connectLoadAll() {
-    try {
-      const activitiesForState = await loadStrava();
+    setLoadingFlag('all', true);
+    setStatusMessage('Connecting to Strava...');
 
+    try {
+      const activitiesForState = await loadStrava({ showLoading: false });
+
+      if (!activitiesForState.length) {
+        throw new Error('No Strava activities loaded');
+      }
+
+      setStatusMessage('Loading OSM streets and matching...');
       await loadAndMatchStreets(center, radiusMiles || 2, activitiesForState);
 
       setStatusMessage('Done');
       Alert.alert('Complete', 'Activities and streets loaded and matched');
     } catch (err: any) {
-      console.error('connectLoadAll error', err);
-      Alert.alert('Error', err.message || 'Operation failed');
       setStatusMessage(err.message || 'Error');
+      Alert.alert('Error', err.message || 'Operation failed');
     } finally {
-      setLoadingAll(false);
+      setLoadingFlag('all', false);
     }
   }
 
@@ -315,36 +339,70 @@ export default function SettingsScreen({ closePanel }: { closePanel: () => void 
       </View>
       <Text style={styles.title}>Settings</Text>
       <Text style={{ marginVertical: 8 }}>Current Center: {center.name}</Text>
+
       <Button title="Use Current Location" onPress={useCurrentLocation} />
       <View style={{ height: 12 }} />
+
       <Text>Or enter an address:</Text>
-      <TextInput style={styles.input} placeholder="Enter address" value={addressInput} onChangeText={setAddressInput} />
+      <TextInput
+        style={styles.input}
+        placeholder="Enter address"
+        value={addressInput}
+        onChangeText={setAddressInput}
+      />
       <Button title="Set as Center" onPress={useAddress} />
+
       <View style={{ height: 12 }} />
-      <View style={{ height: 1, backgroundColor: '#ccc', marginVertical: 12, }} />
+      <View style={{ height: 1, backgroundColor: '#ccc', marginVertical: 12 }} />
       <View style={{ height: 12 }} />
 
-      <Button color={'#FC4C02'} title={loadingAll ? 'Working...' : 'Connect to Strava & Populate Streets'} onPress={connectLoadAll} />
+      <Button
+        color="#FC4C02"
+        title={loading.all ? 'Working...' : 'Connect to Strava & Populate Streets'}
+        onPress={connectLoadAll}
+      />
 
-      <Button title={loadingOSM ? 'Working...' : 'Only Load Streets'} onPress={loadStreetsOnly} />
       <View style={{ height: 12 }} />
-      <Button title={loadingStrava ? 'Working...' : 'Connect to and Load Strava'} onPress={loadStrava} />
+
+      <Button
+        title={loading.osm ? 'Working...' : 'Only Load Streets'}
+        onPress={loadStreetsOnly}
+      />
+
+      <View style={{ height: 12 }} />
+
+      <Button
+        title={loading.strava ? 'Working...' : 'Connect to and Load Strava'}
+        onPress={() => loadStrava({ showLoading: true })}
+      />
+
+      <View style={{ height: 12 }} />
+
       {statusMessage && (
         <View style={{ marginTop: 8, flexDirection: 'row', alignItems: 'center' }}>
-          {statusMessage !== 'Done' && (loadingOSM || loadingStrava || loadingAll) && <ActivityIndicator style={{ marginRight: 8 }} />}
+          {statusMessage !== 'Done' && (loading.osm || loading.strava || loading.all) && (
+            <ActivityIndicator style={{ marginRight: 8 }} />
+          )}
           <Text>{statusMessage}</Text>
         </View>
       )}
+
       <View style={{ height: 12 }} />
-      <View style={{ height: 1, backgroundColor: '#ccc', marginVertical: 12, }} />
+      <View style={{ height: 1, backgroundColor: '#ccc', marginVertical: 12 }} />
       <View style={{ height: 12 }} />
 
       <Text style={styles.title}>Radius: {radiusMiles.toFixed(1)} mi</Text>
       <View style={styles.container}>
-        <TouchableOpacity onPress={() => setRadiusMiles(Math.max(0.5, +(radiusMiles - 0.5).toFixed(1)))} style={styles.input}>
+        <TouchableOpacity
+          onPress={() => setRadiusMiles(Math.max(0.5, +(radiusMiles - 0.5).toFixed(1)))}
+          style={styles.input}
+        >
           <Text>-</Text>
         </TouchableOpacity>
-        <TouchableOpacity onPress={() => setRadiusMiles(Math.min(5, +(radiusMiles + 0.5).toFixed(1)))} style={styles.input}>
+        <TouchableOpacity
+          onPress={() => setRadiusMiles(Math.min(5, +(radiusMiles + 0.5).toFixed(1)))}
+          style={styles.input}
+        >
           <Text>+</Text>
         </TouchableOpacity>
       </View>
