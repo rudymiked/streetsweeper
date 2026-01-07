@@ -133,8 +133,6 @@ export default function MapScreen({ navigation }: any) {
             Center: {center.name} ({center.latitude.toFixed(4)}, {center.longitude.toFixed(4)})
           </Text>
         </View>
-
-        {/* Controls moved into Settings screen; hidden on main map UI. */}
       </View>
     );
   }
@@ -159,6 +157,7 @@ export default function MapScreen({ navigation }: any) {
               lineDashPattern={!s.completed ? [10, 5] : undefined}
             />
           ))}
+
           {activityPolylines.map(a => (
             <Polyline
               key={a.id}
@@ -168,9 +167,23 @@ export default function MapScreen({ navigation }: any) {
             />
           ))}
         </MapView>
+
+        {/* ⭐ Visibility Toggles */}
+        <View style={styles.visibilityControls}>
+          <View style={styles.row}>
+            <Text style={styles.label}>Show Completed</Text>
+            <Switch value={showCompleted} onValueChange={setShowCompleted} />
+          </View>
+
+          <View style={styles.row}>
+            <Text style={styles.label}>Show Unrun</Text>
+            <Switch value={showUnrun} onValueChange={setShowUnrun} />
+          </View>
+        </View>
       </View>
     </>
   );
+
 }
 
 const styles = StyleSheet.create({
@@ -187,4 +200,18 @@ const styles = StyleSheet.create({
   modalContent: { backgroundColor: 'white', padding: 16, borderTopLeftRadius: 16, borderTopRightRadius: 16 },
   modalTitle: { fontSize: 18, fontWeight: '700', marginBottom: 12 },
   input: { borderWidth: 1, borderColor: '#ccc', padding: 10, borderRadius: 6, marginVertical: 8 },
+  visibilityControls: {
+    position: 'absolute',
+    top: 20,
+    right: 20,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    padding: 10,
+    borderRadius: 8,
+    elevation: 4,
+  },
+  label: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginRight: 8,
+  },
 });

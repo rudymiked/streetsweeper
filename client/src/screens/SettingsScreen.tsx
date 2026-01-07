@@ -30,6 +30,8 @@ export default function SettingsScreen({ closePanel }: { closePanel: () => void 
     loadStreetsFromOSM,
     loadStreetsFromStravaActivities,
     loadAndMatchStreets,
+    progress,
+    progressMessage,
   } = useAppState();
 
   const [loading, setLoading] = useState({
@@ -53,14 +55,15 @@ export default function SettingsScreen({ closePanel }: { closePanel: () => void 
           return;
         }
         navigator.geolocation.getCurrentPosition(
-          position => {
-            const { latitude, longitude } = position.coords;
-            setCenter({ name: 'Current Location', latitude, longitude });
+          pos => {
+            setCenter({
+              name: 'Current Location',
+              latitude: pos.coords.latitude,
+              longitude: pos.coords.longitude,
+            });
             Alert.alert('Success', 'Center updated to your current location');
           },
-          error => {
-            Alert.alert('Error', error.message || 'Could not get location');
-          }
+          err => Alert.alert('Error', err.message || 'Could not get location')
         );
       } else {
         if (!Location) throw new Error('expo-location not available');
@@ -70,7 +73,11 @@ export default function SettingsScreen({ closePanel }: { closePanel: () => void 
           return;
         }
         const loc = await Location.getCurrentPositionAsync({});
-        setCenter({ name: 'Current Location', latitude: loc.coords.latitude, longitude: loc.coords.longitude });
+        setCenter({
+          name: 'Current Location',
+          latitude: loc.coords.latitude,
+          longitude: loc.coords.longitude,
+        });
         Alert.alert('Success', 'Center updated to your current location');
       }
     } catch (err: any) {
@@ -85,22 +92,26 @@ export default function SettingsScreen({ closePanel }: { closePanel: () => void 
     }
     try {
       if (isWeb) {
-        const response = await fetch(
+        const res = await fetch(
           `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(addressInput)}`
         );
-        const results = await response.json();
+        const results = await res.json();
         if (!results || results.length === 0) {
           Alert.alert('Not found', 'Address could not be geocoded');
           return;
         }
         const { lat, lon } = results[0];
-        setCenter({ name: addressInput, latitude: parseFloat(lat), longitude: parseFloat(lon) });
+        setCenter({
+          name: addressInput,
+          latitude: parseFloat(lat),
+          longitude: parseFloat(lon),
+        });
         setAddressInput('');
         Alert.alert('Success', 'Center updated to ' + addressInput);
       } else {
         if (!Location) throw new Error('expo-location not available');
         const results = await Location.geocodeAsync(addressInput);
-        if (results.length === 0) {
+        if (!results.length) {
           Alert.alert('Not found', 'Address could not be geocoded');
           return;
         }
@@ -121,9 +132,8 @@ export default function SettingsScreen({ closePanel }: { closePanel: () => void 
     let page = 1;
     const perPage = 200;
 
-    //while (true) {
+    while (true) {
       const url = `${process.env.EXPO_PUBLIC_STRAVA_API_BASE_URL}/athlete/activities?per_page=${perPage}&page=${page}`;
-
       const res = await fetch(url, {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
@@ -133,11 +143,11 @@ export default function SettingsScreen({ closePanel }: { closePanel: () => void 
       }
 
       const batch = await res.json();
-      //if (!batch || batch.length === 0) break;
+      if (!batch || batch.length === 0) break;
 
       all.push(...batch);
       page += 1;
-    //}
+    }
 
     console.log(`Loaded ${all.length} activities from Strava`);
     return all;
@@ -287,7 +297,6 @@ export default function SettingsScreen({ closePanel }: { closePanel: () => void 
       const accessToken = await exchangeStravaToken(code, STRAVA_CLIENT_ID, STRAVA_CLIENT_SECRET);
 
       const rawActivities = await loadStravaActivities(accessToken);
-
       console.log(`Loaded ${rawActivities.length} activities from Strava`);
 
       setStatusMessage('Processing Strava activities...');
@@ -337,6 +346,7 @@ export default function SettingsScreen({ closePanel }: { closePanel: () => void 
       <View style={{ alignItems: 'flex-end' }}>
         <IconButton icon="close" onPress={closePanel} />
       </View>
+
       <Text style={styles.title}>Settings</Text>
       <Text style={{ marginVertical: 8 }}>Current Center: {center.name}</Text>
 
@@ -384,6 +394,24 @@ export default function SettingsScreen({ closePanel }: { closePanel: () => void 
             <ActivityIndicator style={{ marginRight: 8 }} />
           )}
           <Text>{statusMessage}</Text>
+        </View>
+      )}
+
+      {progress > 0 && (
+        <View style={{ marginTop: 12 }}>
+          <Text>
+            {progressMessage || 'Working...'} ({progress}%)
+          </Text>
+          <View style={{ height: 10, backgroundColor: '#eee', borderRadius: 5, marginTop: 4 }}>
+            <View
+              style={{
+                width: `${progress}%`,
+                height: '100%',
+                backgroundColor: '#4CAF50',
+                borderRadius: 5,
+              }}
+            />
+          </View>
         </View>
       )}
 

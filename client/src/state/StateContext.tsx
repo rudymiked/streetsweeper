@@ -4,79 +4,9 @@ import { sleep } from '../utils/utils';
 export type StravaActivity = {
   id: number;
   name: string;
-  type: string;
-  sport_type: string;
-  resource_state: number;
-
-  distance: number;
-  moving_time: number;
-  elapsed_time: number;
-  start_date: string;
-  start_date_local: string;
-  utc_offset: number;
-
-  start_latlng: [number, number] | null;
-  end_latlng: [number, number] | null;
-  location_city: string | null;
-  location_state: string | null;
-  location_country: string | null;
-  timezone: string;
-
-  elev_high: number;
-  elev_low: number;
-  total_elevation_gain: number;
-
-  has_heartrate: boolean;
-  average_heartrate?: number;
-  max_heartrate?: number;
-  heartrate_opt_out: boolean;
-  display_hide_heartrate_option: boolean;
-
-  average_speed: number;
-  max_speed: number;
-  average_watts?: number;
-  kilojoules?: number;
-  device_watts: boolean;
-
-  achievement_count: number;
-  athlete_count: number;
-  comment_count: number;
-  kudos_count: number;
-  photo_count: number;
-  total_photo_count: number;
-  pr_count: number;
-
-  commute: boolean;
-  manual: boolean;
-  private: boolean;
-  flagged: boolean;
-  trainer: boolean;
-  from_accepted_tag: boolean;
-  has_kudoed: boolean;
-
-  athlete: {
-    id: number;
-    resource_state: number;
-  };
-  gear_id: string | null;
-  device_name?: string;
-
-  map: {
-    id: string;
-    summary_polyline: string | null;
-    resource_state: number;
-  };
-
-  polyline?: string;
+  map: { id: string; summary_polyline: string | null };
   coords: Array<{ latitude: number; longitude: number }>;
-
-  external_id: string | null;
-  upload_id: number | null;
-  upload_id_str: string | null;
-
-  suffer_score?: number;
-  workout_type?: number;
-  visibility?: string;
+  [key: string]: any;
 };
 
 type Center = { name: string; latitude: number; longitude: number };
@@ -88,15 +18,13 @@ type StateContextType = {
   setCenter: (c: Center) => void;
   radiusMiles: number;
   setRadiusMiles: (r: number) => void;
-  streets: Street[];
-  toggleStreet: (id: string) => void;
-  markManyComplete: (count?: number) => void;
-  activities: StravaActivity[];
-  setActivities: (a: StravaActivity[]) => void;
   showCompleted: boolean;
-  setShowCompleted: (v: boolean) => void;
+  setShowCompleted: (b: boolean) => void;
   showUnrun: boolean;
-  setShowUnrun: (v: boolean) => void;
+  setShowUnrun: (b: boolean) => void;
+  toggleStreet: (id: string) => void;
+  streets: Street[];
+  activities: StravaActivity[];
   loadStreetsFromOSM: (center?: Center, miles?: number) => Promise<Street[]>;
   loadStreetsFromStravaActivities: (activities: StravaActivity[]) => Promise<StravaActivity[]>;
   markStreetsRunByActivitiesAsync: (
@@ -105,6 +33,11 @@ type StateContextType = {
     toleranceMeters?: number
   ) => Promise<Street[]>;
   loadAndMatchStreets: (center: Center, radiusMiles: number, activities: StravaActivity[]) => Promise<void>;
+
+  progress: number;
+  progressMessage: string | null;
+  setProgress: (n: number) => void;
+  setProgressMessage: (s: string | null) => void;
 };
 
 const ctx = createContext<StateContextType | undefined>(undefined);
@@ -117,64 +50,98 @@ const initialCenter: Center = {
 
 export const StateProvider = ({ children }: { children: ReactNode }) => {
   const [center, setCenter] = useState<Center>(initialCenter);
-  const [radiusMiles, setRadiusMiles] = useState<number>(
-    process.env.DEFAULT_RADIUS_MILES ? Number.parseFloat(process.env.DEFAULT_RADIUS_MILES) : 2
-  );
+  const [radiusMiles, setRadiusMiles] = useState<number>(2);
   const [streets, setStreets] = useState<Street[]>([]);
   const [activities, setActivities] = useState<StravaActivity[]>([]);
   const [showCompleted, setShowCompleted] = useState<boolean>(true);
   const [showUnrun, setShowUnrun] = useState<boolean>(true);
+  const [progress, setProgress] = useState(0);
+  const [progressMessage, setProgressMessage] = useState<string | null>(null);
+
+  function toggleStreet(id: string) {
+    setStreets(s =>
+      s.map(st =>
+        st.id === id ? { ...st, completed: !st.completed } : st
+      )
+    );
+  }
+
+  function resetProgress() {
+    setTimeout(() => {
+      setProgress(0);
+      setProgressMessage(null);
+    }, 800);
+  }
+
+  function milesToBBox(lat: number, lon: number, radiusMiles: number) {
+    const R = 6371e3;
+    const d = radiusMiles * 1609.344;
+
+    const latDelta = (d / R) * (180 / Math.PI);
+    const lonDelta = (d / (R * Math.cos((lat * Math.PI) / 180))) * (180 / Math.PI);
+
+    return {
+      minLat: lat - latDelta,
+      maxLat: lat + latDelta,
+      minLon: lon - lonDelta,
+      maxLon: lon + lonDelta,
+    };
+  }
 
   async function loadStreetsFromOSM(centerParam?: Center, miles?: number): Promise<Street[]> {
     const mirrors = [
-      'https://streetsweeper-overpass-hjbthgeffjdqe0hf.westus2-01.azurewebsites.net/api/overpass',
+      "https://streetsweeper-overpass-hjbthgeffjdqe0hf.westus2-01.azurewebsites.net/api/overpass",
       `${process.env.EXPO_PUBLIC_OSM_OVERPASS_API_URL}`,
       `${process.env.EXPO_PUBLIC_OSM_OVERPASS_API_URL_TWO}`,
       `${process.env.EXPO_PUBLIC_OSM_OVERPASS_API_URL_THREE}`,
     ];
 
     const c = centerParam || initialCenter;
-    const rMiles = typeof miles === 'number' ? miles : radiusMiles || 2;
-    const radiusMeters = Math.round(rMiles * 1609.344);
+    const rMiles = typeof miles === "number" ? miles : radiusMiles;
 
-    const query = `[out:json];way["highway"~"residential|living_street|service|unclassified|tertiary|secondary"](around:${radiusMeters},${c.latitude},${c.longitude});out geom;`;
+    const bbox = milesToBBox(c.latitude, c.longitude, rMiles);
+
+    const query = `
+      [out:json][timeout:25];
+      (
+        way["highway"~"^(residential|tertiary|secondary)$"]
+          (${bbox.minLat},${bbox.minLon},${bbox.maxLat},${bbox.maxLon});
+      );
+      out geom;
+    `;
+
+    setProgressMessage("Loading OSM streets...");
+    setProgress(0);
 
     for (let attempt = 0; attempt < mirrors.length; attempt++) {
       try {
         const mirror = mirrors[attempt];
-        console.log(`Trying Overpass mirror: ${attempt + 1}/${mirrors.length}: ${mirror}`);
-
         const url = `${mirror}?data=${encodeURIComponent(query)}`;
-        console.log(url);
 
-        const res = await fetch(url, { method: 'GET' });
-
+        const res = await fetch(url);
         if (!res.ok) {
-          console.warn(`Mirror ${mirror} failed: ${res.status}`);
           if (attempt < mirrors.length - 1) continue;
-          throw new Error(`All Overpass mirrors failed (last: ${res.status})`);
+          throw new Error(`Overpass failed: ${res.status}`);
         }
 
         const json = await res.json();
         const elems = json.elements || [];
 
         const ways: Street[] = elems
-          .filter((e: any) => e.type === 'way' && e.geometry && e.geometry.length > 0)
-          .map(
-            (w: any) =>
-              ({
-                id: String(w.id),
-                name: (w.tags && (w.tags.name || w.tags.ref)) || `OSM ${w.id}`,
-                completed: false,
-                coords: w.geometry.map((g: any) => ({ latitude: g.lat, longitude: g.lon })),
-              } as Street)
-          );
+          .filter((e: any) => e.type === "way" && e.geometry?.length)
+          .map((w: any) => ({
+            id: String(w.id),
+            name: w.tags?.name || w.tags?.ref || `OSM ${w.id}`,
+            completed: false,
+            coords: w.geometry.map((g: any) => ({ latitude: g.lat, longitude: g.lon })),
+          }));
 
-        console.log('OSM ways count:', ways.length);
+        setProgress(100);
+        setProgressMessage("OSM streets loaded");
+
         setStreets(ways);
         return ways;
       } catch (err) {
-        console.error(`loadStreetsFromOSM attempt ${attempt + 1} error:`, err);
         if (attempt === mirrors.length - 1) throw err;
       }
     }
@@ -183,15 +150,11 @@ export const StateProvider = ({ children }: { children: ReactNode }) => {
   }
 
   function decodePolyline(polylineStr: string) {
-    const coords: { latitude: number; longitude: number }[] = [];
-    let index = 0;
-    let lat = 0;
-    let lng = 0;
+    const coords: Coord[] = [];
+    let index = 0, lat = 0, lng = 0;
 
     while (index < polylineStr.length) {
-      let result = 0;
-      let shift = 0;
-      let byte = 0;
+      let result = 0, shift = 0, byte = 0;
 
       do {
         byte = polylineStr.charCodeAt(index++) - 63;
@@ -201,8 +164,7 @@ export const StateProvider = ({ children }: { children: ReactNode }) => {
 
       lat += (result & 1) ? ~(result >> 1) : result >> 1;
 
-      result = 0;
-      shift = 0;
+      result = 0; shift = 0;
       do {
         byte = polylineStr.charCodeAt(index++) - 63;
         result |= (byte & 0x1f) << shift;
@@ -217,23 +179,24 @@ export const StateProvider = ({ children }: { children: ReactNode }) => {
     return coords;
   }
 
-  function degToMeters(p: { latitude: number; longitude: number }, refLat = p.latitude) {
+  function degToMeters(p: Coord, refLat = p.latitude) {
     const latRad = (refLat * Math.PI) / 180;
-    const mPerDegLat = 111320;
-    const mPerDegLon = Math.cos(latRad) * 111320;
-    return { x: p.longitude * mPerDegLon, y: p.latitude * mPerDegLat };
+    return {
+      x: p.longitude * Math.cos(latRad) * 111320,
+      y: p.latitude * 111320,
+    };
   }
 
-  function pointToSegmentDistanceMeters(pt: { x: number; y: number }, v: { x: number; y: number }, w: { x: number; y: number }) {
-    const l2 = (w.x - v.x) * (w.x - v.x) + (w.y - v.y) * (w.y - v.y);
+  function pointToSegmentDistanceMeters(pt: any, v: any, w: any) {
+    const l2 = (w.x - v.x) ** 2 + (w.y - v.y) ** 2;
     if (l2 === 0) return Math.hypot(pt.x - v.x, pt.y - v.y);
     const t = Math.max(0, Math.min(1, ((pt.x - v.x) * (w.x - v.x) + (pt.y - v.y) * (w.y - v.y)) / l2));
     const proj = { x: v.x + t * (w.x - v.x), y: v.y + t * (w.y - v.y) };
     return Math.hypot(pt.x - proj.x, pt.y - proj.y);
   }
 
-  function segmentsIntersect(a1: { x: number; y: number }, a2: { x: number; y: number }, b1: { x: number; y: number }, b2: { x: number; y: number }) {
-    function orient(a: { x: number; y: number }, b: { x: number; y: number }, c: { x: number; y: number }) {
+  function segmentsIntersect(a1: any, a2: any, b1: any, b2: any) {
+    function orient(a: any, b: any, c: any) {
       return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
     }
     const o1 = orient(a1, a2, b1);
@@ -244,7 +207,7 @@ export const StateProvider = ({ children }: { children: ReactNode }) => {
   }
 
   function streetWasRun(streetCoords: Coord[], activityCoords: Coord[], toleranceMeters = 20) {
-    if (!streetCoords?.length || !activityCoords?.length) return false;
+    if (!streetCoords.length || !activityCoords.length) return false;
 
     for (let i = 0; i < streetCoords.length - 1; i++) {
       const a1 = streetCoords[i];
@@ -254,33 +217,25 @@ export const StateProvider = ({ children }: { children: ReactNode }) => {
         const b1 = activityCoords[j];
         const b2 = activityCoords[j + 1];
 
-        const dist = segmentToSegmentDistanceMeters(a1, a2, b1, b2);
-        if (dist < toleranceMeters) return true;
+        const meanLat = (a1.latitude + a2.latitude + b1.latitude + b2.latitude) / 4;
+
+        const A1 = degToMeters(a1, meanLat);
+        const A2 = degToMeters(a2, meanLat);
+        const B1 = degToMeters(b1, meanLat);
+        const B2 = degToMeters(b2, meanLat);
+
+        if (segmentsIntersect(A1, A2, B1, B2)) return true;
+
+        const d1 = pointToSegmentDistanceMeters(A1, B1, B2);
+        const d2 = pointToSegmentDistanceMeters(A2, B1, B2);
+        const d3 = pointToSegmentDistanceMeters(B1, A1, A2);
+        const d4 = pointToSegmentDistanceMeters(B2, A1, A2);
+
+        if (Math.min(d1, d2, d3, d4) < toleranceMeters) return true;
       }
     }
 
     return false;
-  }
-
-  function segmentToSegmentDistanceMeters(
-    a1deg: { latitude: number; longitude: number },
-    a2deg: { latitude: number; longitude: number },
-    b1deg: { latitude: number; longitude: number },
-    b2deg: { latitude: number; longitude: number }
-  ) {
-    const meanLat = (a1deg.latitude + a2deg.latitude + b1deg.latitude + b2deg.latitude) / 4;
-    const a1 = degToMeters({ latitude: a1deg.latitude, longitude: a1deg.longitude }, meanLat);
-    const a2 = degToMeters({ latitude: a2deg.latitude, longitude: a2deg.longitude }, meanLat);
-    const b1 = degToMeters({ latitude: b1deg.latitude, longitude: b1deg.longitude }, meanLat);
-    const b2 = degToMeters({ latitude: b2deg.latitude, longitude: b2deg.longitude }, meanLat);
-
-    if (segmentsIntersect(a1, a2, b1, b2)) return 0;
-
-    const d1 = pointToSegmentDistanceMeters(a1, b1, b2);
-    const d2 = pointToSegmentDistanceMeters(a2, b1, b2);
-    const d3 = pointToSegmentDistanceMeters(b1, a1, a2);
-    const d4 = pointToSegmentDistanceMeters(b2, a1, a2);
-    return Math.min(d1, d2, d3, d4);
   }
 
   async function markStreetsRunByActivitiesAsync(
@@ -288,100 +243,79 @@ export const StateProvider = ({ children }: { children: ReactNode }) => {
     activities: StravaActivity[],
     toleranceMeters = 20
   ): Promise<Street[]> {
-    console.log('▶ markStreetsRunByActivitiesAsync START', streetsInput.length, 'streets');
-
     const updated: Street[] = [];
     const chunkSize = 50;
+    const total = streetsInput.length;
+
+    setProgressMessage("Matching streets...");
+    setProgress(0);
 
     for (let i = 0; i < streetsInput.length; i += chunkSize) {
-      console.log('  → Matching chunk', i, 'to', i + chunkSize);
-
       const chunk = streetsInput.slice(i, i + chunkSize);
 
       for (const street of chunk) {
         const wasRun = activities.some(act => {
-          try {
-            if (!act.map.summary_polyline) return false;
-            const coords = decodePolyline(act.map.summary_polyline || '');
-            return streetWasRun(street.coords, coords, toleranceMeters);
-          } catch (err) {
-            console.log('      ✗ Error matching street', street.id, err);
-            return false;
-          }
+          if (!act.map.summary_polyline) return false;
+          const coords = decodePolyline(act.map.summary_polyline);
+          return streetWasRun(street.coords, coords, toleranceMeters);
         });
 
         updated.push({ ...street, completed: wasRun });
       }
 
-      console.log('  → Yielding to UI');
+      setProgress(Math.round((updated.length / total) * 100));
       await sleep(0);
     }
 
-    console.log('▶ markStreetsRunByActivitiesAsync DONE');
+    setProgressMessage("Matching complete");
+    resetProgress();
+
     return updated;
   }
 
-  async function loadStreetsFromStravaActivities(activitiesRaw: StravaActivity[]): Promise<StravaActivity[]> {
-    console.log('▶ loadStreetsFromStravaActivities START', activitiesRaw.length);
-
+  async function loadStreetsFromStravaActivities(raw: StravaActivity[]): Promise<StravaActivity[]> {
     const enriched: StravaActivity[] = [];
     const chunkSize = 50;
+    const total = raw.length;
 
-    for (let i = 0; i < activitiesRaw.length; i += chunkSize) {
-      const chunk = activitiesRaw.slice(i, i + chunkSize);
+    setProgressMessage("Decoding Strava activities...");
+    setProgress(0);
+
+    for (let i = 0; i < raw.length; i += chunkSize) {
+      const chunk = raw.slice(i, i + chunkSize);
 
       for (const a of chunk) {
         let coords: Coord[] = [];
-
         if (a.map.summary_polyline) {
           try {
-            const decoded = decodePolyline(a.map.summary_polyline || '');
-            coords = decoded.map(p => ({ latitude: p.latitude, longitude: p.longitude }));
-          } catch (err) {
-            console.warn(`Failed to decode polyline for activity ${a.id}`, err);
-          }
+            coords = decodePolyline(a.map.summary_polyline);
+          } catch { }
         }
 
-        enriched.push({
-          ...a,
-          coords,
-        });
+        enriched.push({ ...a, coords });
       }
 
+      setProgress(Math.round((enriched.length / total) * 100));
       await sleep(0);
     }
 
-    console.log('▶ loadStreetsFromStravaActivities DONE, enriched:', enriched.length);
+    setProgressMessage("Strava processing complete");
+    resetProgress();
+
     setActivities(enriched);
     return enriched;
   }
 
   async function loadAndMatchStreets(center: Center, radiusMiles: number, activitiesForMatch: StravaActivity[]) {
-    console.log('loadAndMatchStreets', center, radiusMiles, activitiesForMatch.length);
-
-    const baseStreets = await loadStreetsFromOSM(center, radiusMiles);
-    if (!baseStreets.length) {
-      console.log('No OSM streets loaded; skipping matching');
+    const base = await loadStreetsFromOSM(center, radiusMiles);
+    if (!base.length) {
       setStreets([]);
       return;
     }
 
-    const updated = await markStreetsRunByActivitiesAsync(baseStreets, activitiesForMatch, 20);
+    const updated = await markStreetsRunByActivitiesAsync(base, activitiesForMatch, 20);
     setStreets(updated);
-  }
-
-  function toggleStreet(id: string) {
-    setStreets(s => s.map(st => (st.id === id ? { ...st, completed: !st.completed } : st)));
-  }
-
-  function markManyComplete(count = 5) {
-    setStreets(s => {
-      const copy = [...s];
-      for (let i = 0; i < Math.min(count, copy.length); i++) {
-        copy[i] = { ...copy[i], completed: true };
-      }
-      return copy;
-    });
+    resetProgress();
   }
 
   return (
@@ -392,20 +326,29 @@ export const StateProvider = ({ children }: { children: ReactNode }) => {
         radiusMiles,
         setRadiusMiles,
         streets,
-        toggleStreet,
-        markManyComplete,
         activities,
-        setActivities,
-        showCompleted,
-        setShowCompleted,
-        showUnrun,
-        setShowUnrun,
         loadStreetsFromOSM,
         loadStreetsFromStravaActivities,
         markStreetsRunByActivitiesAsync,
         loadAndMatchStreets,
+
+        // Progress system
+        progress,
+        progressMessage,
+        setProgress,
+        setProgressMessage,
+
+        // Visibility filters
+        showCompleted,
+        setShowCompleted,
+        showUnrun,
+        setShowUnrun,
+
+        // Manual toggling
+        toggleStreet,
       }}
     >
+
       {children}
     </ctx.Provider>
   );
