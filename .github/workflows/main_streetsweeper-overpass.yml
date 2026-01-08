@@ -2,8 +2,7 @@ name: Deploy Node.js Azure Function - streetsweeper-overpass
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
   workflow_dispatch:
 
 env:
@@ -11,52 +10,32 @@ env:
   NODE_VERSION: '22.x'
 
 jobs:
-  build:
+  deploy:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Node ${{ env.NODE_VERSION }}
+      - name: Setup Node
         uses: actions/setup-node@v3
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      # No npm install/build/test because your function has no package.json
-
-      - name: Zip artifact for deployment
+      - name: Zip function app
         run: |
           cd ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}
-          zip -r ../release.zip .
+          zip -r ../function.zip .
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+      - name: Azure Login
+        uses: azure/login@v2
         with:
-          name: functionapp
-          path: release.zip
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-  deploy:
-    runs-on: ubuntu-latest
-    needs: build
-
-    steps:
-      - name: Download artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: functionapp
-
-      - name: Unzip artifact
+      - name: Deploy to Azure Function (Linux Flex Consumption)
         run: |
-          unzip release.zip -d package
-          rm release.zip
-
-      - name: Deploy to Azure Function App
-        uses: Azure/functions-action@v1
-        with:
-          app-name: 'streetsweeper-overpass'
-          slot-name: 'Production'
-          package: package
-          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_2749F332182C4AB5B3B2C922D4910F12 }}
+          az functionapp deploy \
+            --resource-group <YOUR_RESOURCE_GROUP> \
+            --name streetsweeper-overpass \
+            --src-path function.zip \
+            --type zip
