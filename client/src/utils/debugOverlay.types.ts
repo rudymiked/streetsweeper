@@ -4,7 +4,7 @@ import { Coord } from "../state/core/geometry/base";
 export interface DebugEvidencePoint {
   lat: number;
   lon: number;
-  type: "distance" | "intersection" | "bearing" | "strong";
+  type: "distance" | "intersection" | "bearing" | "strong" | "parallel_offset";
   value?: number; // distance, bearing diff, etc.
 }
 

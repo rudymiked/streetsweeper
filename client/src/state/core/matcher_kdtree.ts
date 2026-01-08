@@ -34,7 +34,7 @@ export type Activity = {
 };
 
 // ---------------------------------------------------------
-// Build KD-tree from activity segment midpoints
+// KD-tree builder
 // ---------------------------------------------------------
 function buildActivityKDTree(activities: Activity[]): KDNode | null {
   const points: KDPoint[] = [];
@@ -66,15 +66,42 @@ function buildActivityKDTree(activities: Activity[]): KDNode | null {
 }
 
 // ---------------------------------------------------------
-// Main KD-tree matcher (with debug)
+// Adaptive helpers
+// ---------------------------------------------------------
+function lerp(min: number, max: number, t: number) {
+  return min + (max - min) * t;
+}
+
+function adaptTolerance(conf: number, base: number) {
+  return lerp(base * 0.6, base * 1.8, 1 - conf);
+}
+
+function adaptStrongTolerance(conf: number, base: number) {
+  return lerp(base * 0.7, base * 1.4, 1 - conf);
+}
+
+function adaptBearing(conf: number, base: number) {
+  return lerp(base * 0.5, base * 1.5, 1 - conf);
+}
+
+function adaptMinScore(conf: number, base: number) {
+  return lerp(base * 1.2, base * 0.6, 1 - conf);
+}
+
+function smoothConfidence(prev: number, current: number, alpha = 0.25) {
+  return prev * (1 - alpha) + current * alpha;
+}
+
+// ---------------------------------------------------------
+// Main KD-tree matcher (adaptive + sidewalk-aware)
 // ---------------------------------------------------------
 export async function matchStreetsKDTree(
   streets: Street[],
   activities: Activity[],
-  toleranceMeters = 8,
-  strongToleranceMeters = 5,
-  maxBearingDiff = Math.PI / 2,
-  minScoreRatio = 0.35
+  baseTolerance = 8,
+  baseStrongTolerance = 5,
+  baseBearingDiff = Math.PI / 2,
+  baseMinScoreRatio = 0.35
 ): Promise<{ streets: Street[]; debug: DebugOverlayData }> {
 
   const tree = buildActivityKDTree(activities);
@@ -82,6 +109,7 @@ export async function matchStreetsKDTree(
   const debugSegments: DebugSegmentScore[] = [];
 
   const total = streets.length;
+  let rollingConfidence = 0.75; // neutral starting point
 
   for (let i = 0; i < streets.length; i++) {
     const street = streets[i];
@@ -97,13 +125,22 @@ export async function matchStreetsKDTree(
       const A1 = street.coords[j];
       const A2 = street.coords[j + 1];
 
+      // --- Adaptive thresholds per segment ---
+      let tolerance = adaptTolerance(rollingConfidence, baseTolerance);
+      const strongTolerance = adaptStrongTolerance(rollingConfidence, baseStrongTolerance);
+      const bearingDiff = adaptBearing(rollingConfidence, baseBearingDiff);
+
+      // Ensure sidewalks are always within reach
+      const sidewalkFloor = 10; // meters
+      tolerance = Math.max(tolerance, sidewalkFloor);
+
       const samples = sampleSegmentPoints(A1, A2);
       let bestScore = 0;
       const evidence: DebugEvidencePoint[] = [];
 
       for (const sample of samples) {
         const m = degToMeters(sample);
-        const range = toleranceMeters * 2;
+        const range = tolerance * 2.5; // slightly expanded for sidewalks
 
         const nearby = kdRangeSearch(
           tree,
@@ -112,6 +149,10 @@ export async function matchStreetsKDTree(
           m.y - range,
           m.y + range
         );
+
+        // Candidate density adaptation (tighten when dense)
+        const densityFactor = Math.min(1, nearby.length / 20);
+        const densityAdjustedTolerance = tolerance * (1 + densityFactor * 0.5);
 
         for (const pt of nearby) {
           const act = activities[pt.activityIndex];
@@ -126,7 +167,7 @@ export async function matchStreetsKDTree(
           const b1 = degToMeters(B1);
           const b2 = degToMeters(B2);
 
-          if (!boxesOverlap(a1, a2, b1, b2, toleranceMeters)) continue;
+          if (!boxesOverlap(a1, a2, b1, b2, densityAdjustedTolerance)) continue;
 
           const d1 = pointToSegmentDistanceMeters(a1, b1, b2);
           const d2 = pointToSegmentDistanceMeters(a2, b1, b2);
@@ -134,11 +175,12 @@ export async function matchStreetsKDTree(
           const d4 = pointToSegmentDistanceMeters(b2, a1, a2);
           const minD = Math.min(d1, d2, d3, d4);
 
-          if (minD > toleranceMeters) continue;
+          if (minD > densityAdjustedTolerance) continue;
 
           let score = 0;
 
-          if (minD <= strongToleranceMeters) {
+          // Distance-based scoring
+          if (minD <= strongTolerance) {
             score += 1.0;
             evidence.push({
               lat: sample.latitude,
@@ -156,6 +198,7 @@ export async function matchStreetsKDTree(
             });
           }
 
+          // Intersection bonus
           if (segmentsIntersect(a1, a2, b1, b2)) {
             score += 0.75;
             evidence.push({
@@ -165,12 +208,34 @@ export async function matchStreetsKDTree(
             });
           }
 
-          if (directionallyAligned(A1, A2, B1, B2, maxBearingDiff)) {
-            score += 0.5;
+          const aligned = directionallyAligned(A1, A2, B1, B2, bearingDiff);
+
+          // Bearing bonus (stronger when distance is higher but alignment is perfect)
+          if (aligned) {
+            const bearingBonus = minD > strongTolerance ? 0.75 : 0.5;
+            score += bearingBonus;
             evidence.push({
               lat: sample.latitude,
               lon: sample.longitude,
               type: "bearing"
+            });
+          }
+
+          // Sidewalk / parallel-offset detection
+          const isParallelOffset =
+            !segmentsIntersect(a1, a2, b1, b2) &&
+            aligned &&
+            minD > strongTolerance &&
+            minD <= tolerance * 2;
+
+          if (isParallelOffset) {
+            // Treat like a strong geometric hint
+            score += 0.75;
+            evidence.push({
+              lat: sample.latitude,
+              lon: sample.longitude,
+              type: "parallel_offset",
+              value: minD
             });
           }
 
@@ -183,6 +248,9 @@ export async function matchStreetsKDTree(
       streetScore += bestScore;
       streetMaxScore += 2.25;
 
+      const segConf = bestScore / 2.25;
+      rollingConfidence = smoothConfidence(rollingConfidence, segConf);
+
       debugSegments.push({
         streetSeg: { A1, A2 },
         score: bestScore,
@@ -191,8 +259,14 @@ export async function matchStreetsKDTree(
       });
     }
 
-    const ratio = streetMaxScore > 0 ? streetScore / streetMaxScore : 0;
-    const matched = ratio >= minScoreRatio;
+    const rawRatio = streetMaxScore > 0 ? streetScore / streetMaxScore : 0;
+    let minScoreRatio = adaptMinScore(rollingConfidence, baseMinScoreRatio);
+
+    // If we’ve seen a lot of parallel-offset evidence on this street,
+    // you could optionally relax minScoreRatio further by scanning debugSegments
+    // for this street and counting "parallel_offset" evidence.
+
+    const matched = rawRatio >= minScoreRatio;
 
     updated.push({ ...street, completed: matched });
   }
