@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useState, ReactNode } from 'react';
 import { sleep } from '../utils/utils';
 import { decodePolyline } from './core/decodePolyline';
-import { matchStreets } from './core/matcher_kdtree';
+import { matchStreets, Street } from './core/matcher_kdtree';
+import { classify, computeConfidencePerStreet } from '../utils/debugConfidence';
 
 export type StravaActivity = {
   id: number;
@@ -13,7 +14,6 @@ export type StravaActivity = {
 
 type Center = { name: string; latitude: number; longitude: number };
 type Coord = { latitude: number; longitude: number };
-type Street = { id: string; name: string; completed: boolean; coords: Coord[] };
 
 type StateContextType = {
   center: Center;
@@ -26,6 +26,8 @@ type StateContextType = {
   setShowUnrun: (b: boolean) => void;
   showStravaOverlay: boolean;
   setShowStravaOverlay: (b: boolean) => void;
+  showConfidenceOverlay: boolean;
+  setShowConfidenceOverlay: (b: boolean) => void;
   toggleStreet: (id: string) => void;
   streets: Street[];
   activities: StravaActivity[];
@@ -48,12 +50,13 @@ const initialCenter: Center = {
 
 export const StateProvider = ({ children }: { children: ReactNode }) => {
   const [center, setCenter] = useState<Center>(initialCenter);
-  const [radiusMiles, setRadiusMiles] = useState<number>(2);
+  const [radiusMiles, setRadiusMiles] = useState<number>(3);
   const [streets, setStreets] = useState<Street[]>([]);
   const [activities, setActivities] = useState<StravaActivity[]>([]);
   const [showCompleted, setShowCompleted] = useState<boolean>(true);
   const [showUnrun, setShowUnrun] = useState<boolean>(true);
   const [showStravaOverlay, setShowStravaOverlay] = useState<boolean>(false);
+  const [showConfidenceOverlay, setShowConfidenceOverlay] = useState<boolean>(false);
   const [progress, setProgress] = useState(0);
   const [progressMessage, setProgressMessage] = useState<string | null>(null);
 
@@ -196,10 +199,20 @@ export const StateProvider = ({ children }: { children: ReactNode }) => {
       `Matching ${base.length} streets against ${activitiesForMatch.length} activities using matcher_kdtree...`
     );
 
-    // pass raw activities, not decoded ones
-    const updated = await matchStreets(base, activitiesForMatch, 6);
+    const updated = await matchStreets(base, activitiesForMatch, 8);
 
-    setStreets(updated);
+    // compute confidence per street
+    const streetsWithConfidence = computeConfidencePerStreet(
+      updated.streets,
+      updated.debug
+    ).map(street => ({
+      ...street,
+      classification: classify(street.confidence)
+    }));
+
+    console.log('Streets with confidence:', streetsWithConfidence[0]);
+
+    setStreets(streetsWithConfidence);
     resetProgress();
   }
 
@@ -229,6 +242,8 @@ export const StateProvider = ({ children }: { children: ReactNode }) => {
         setShowUnrun,
         showStravaOverlay,
         setShowStravaOverlay,
+        showConfidenceOverlay,
+        setShowConfidenceOverlay,
 
         // Manual toggling
         toggleStreet,

@@ -1,8 +1,9 @@
 const { performance } = require('perf_hooks');
 const { decodePolyline } = require('../src/state/core/decodePolyline');
-const { streetWasRun } = require('../src/state/core/geometry');
-const { streetWasRunStrict } = require('../src/state/core/geometry_strict');
+const { streetWasRunStrict } = require('../src/state/core/geometry/geometry_strict');
 const { matchStreets } = require('../src/state/core/matcher_kdtree');
+const { fakeSeg } = require('../src/utils/fakeSeg');
+const { computeStreetConfidence } = require('../src/utils/debugConfidence');
 
 const strava = require('../__tests__/mock-data/strava.json');
 const osm = require('../__tests__/mock-data/osm.json');
@@ -57,17 +58,6 @@ describe("Performance Benchmarks", () => {
         console.log("decodePolyline x10k:", (end - start).toFixed(2), "ms");
     });
 
-    test("streetWasRun speed", () => {
-        const activityCoords = decodePolyline(mockActivity.map.summary_polyline);
-
-        const start = performance.now();
-        for (let i = 0; i < 2000; i++) {
-            streetWasRun(mockStreet.coords, activityCoords, 20);
-        }
-        const end = performance.now();
-        console.log("streetWasRun x2000:", (end - start).toFixed(2), "ms");
-    });
-
     test("streetWasRunStrict speed", () => {
         const activityCoords = decodePolyline(mockActivity.map.summary_polyline);
 
@@ -88,7 +78,7 @@ describe("Performance Benchmarks", () => {
         const activities = Array.from({ length: 50 }, () => mockActivity);
 
         const start = performance.now();
-        await matchStreets(streets, activities, 20);
+        await matchStreets(streets, activities, 8);
         const end = performance.now();
 
         console.log("matchStreets (500 streets, 50 acts):", (end - start).toFixed(2), "ms");
@@ -109,20 +99,20 @@ describe("Real-world performance tests", () => {
         console.log("decodePolyline on all activities:", (end - start).toFixed(2), "ms");
     });
 
-    test("streetWasRun on sample street vs sample activity", () => {
+    test("streetWasRunStrict on sample street vs sample activity", () => {
         const street = osmStreets[0];
         const act = stravaActivities.find(a => a.map.summary_polyline);
         const coords = decodePolyline(act.map.summary_polyline);
 
         const start = performance.now();
         for (let i = 0; i < 2000; i++) {
-            streetWasRun(street.coords, coords, 20);
+            streetWasRunStrict(street.coords, coords, 20);
             progress(i, 2000);
         }
 
         const end = performance.now();
 
-        console.log("streetWasRun x2000:", (end - start).toFixed(2), "ms");
+        console.log("streetWasRunStrict x2000:", (end - start).toFixed(2), "ms");
     });
 
     test("matchStreets on full dataset", async () => {
@@ -131,15 +121,28 @@ describe("Real-world performance tests", () => {
         console.log("Starting full matcher test...");
         console.log(`Total streets: ${osmStreets.length}, Total activities: ${stravaActivities.length}`);
 
-        await matchStreets(osmStreets, stravaActivities, 20);
+        await matchStreets(osmStreets, stravaActivities, 8);
 
         const end = performance.now();
         console.log("Full matcher (3000 streets, 667 acts):", (end - start).toFixed(2), "ms");
     });
+
+    test("confidence scoring", () => {
+        const data = {
+            segments: [
+                { streetSeg: fakeSeg(), score: 1.5, maxScore: 2.25, evidence: [] },
+                { streetSeg: fakeSeg(), score: 0.5, maxScore: 2.25, evidence: [] }
+            ]
+        };
+
+        const confidence = computeStreetConfidence(data);
+        expect(confidence).toBeCloseTo((1.5 + 0.5) / (2.25 * 2));
+    });
+
 });
 
 function progress(i, total, step = 100) {
-  if (i % step === 0) {
-    console.log(`Progress: ${i}/${total}`);
-  }
+    if (i % step === 0) {
+        console.log(`Progress: ${i}/${total}`);
+    }
 }

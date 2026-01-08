@@ -1,13 +1,6 @@
-import { decodePolyline } from './decodePolyline';
-import { streetWasRun, Coord } from './geometry';
-import { streetWasRunStrict } from './geometry_strict';
-
-export type Street = {
-  id: string;
-  name: string;
-  completed: boolean;
-  coords: Coord[];
-};
+import { Coord } from './geometry/geometry';
+import { streetWasRunStrict } from './geometry/geometry_strict';
+import { Street } from './matcher_kdtree';
 
 export type StravaActivity = {
   id: number;
@@ -18,7 +11,7 @@ export type StravaActivity = {
 export async function markStreetsRunByActivitiesAsync(
   streetsInput: Street[],
   activities: (StravaActivity & { decoded: Coord[] })[],
-  toleranceMeters = 6
+  toleranceMeters = 8
 ): Promise<Street[]> {
 
   const updated: Street[] = [];

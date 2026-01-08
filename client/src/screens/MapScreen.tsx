@@ -26,6 +26,8 @@ export default function MapScreen() {
     setShowUnrun,
     showStravaOverlay,
     setShowStravaOverlay,
+    showConfidenceOverlay,
+    setShowConfidenceOverlay,
     radiusMiles,
     setRadiusMiles,
   } = useAppState();
@@ -153,6 +155,11 @@ export default function MapScreen() {
             <Switch value={showStravaOverlay} onValueChange={setShowStravaOverlay} />
           </View>
 
+          <View style={styles.row}>
+            <Text>Confidence Overlay</Text>
+            <Switch value={showConfidenceOverlay} onValueChange={setShowConfidenceOverlay} />
+          </View>
+
           <Text style={styles.sliderLabel}>Radius: {radiusMiles.toFixed(1)} mi</Text>
           <Slider
             minimumValue={0.5}
@@ -174,7 +181,7 @@ const styles = StyleSheet.create({
 
   debugOverlay: {
     position: 'absolute',
-    top: 20,
+    bottom: 20,
     left: 20,
     backgroundColor: 'rgba(0,0,0,0.55)',
     padding: 8,
