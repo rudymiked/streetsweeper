@@ -34,8 +34,8 @@ jobs:
 
       - name: Deploy to Azure Function (Linux Flex Consumption)
         run: |
-          az functionapp deploy \
+          az functionapp deployment source config-zip \
             --resource-group StreetSweeper \
             --name streetsweeper-overpass \
-            --src-path function.zip \
-            --type zip
+            --src function.zip
+
