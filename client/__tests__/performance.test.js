@@ -5,8 +5,8 @@ const { matchStreets } = require('../src/state/core/matcher_kdtree');
 const { fakeSeg } = require('../src/utils/fakeSeg');
 const { computeStreetConfidence } = require('../src/utils/debugConfidence');
 
-const strava = require('../__tests__/mock-data/strava.json');
-const osm = require('../__tests__/mock-data/osm.json');
+const strava = require('../../client/assets/mock/strava.json');
+const osm = require('../../client/assets/mock/osm.json');
 
 // Normalize OSM data
 const osmStreets = (osm.elements || osm).map(s => ({

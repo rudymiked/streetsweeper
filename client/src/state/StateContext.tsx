@@ -3,6 +3,9 @@ import { sleep } from '../utils/utils';
 import { decodePolyline } from './core/decodePolyline';
 import { matchStreets, Street } from './core/matcher_kdtree';
 import { classify, computeConfidencePerStreet } from '../utils/debugConfidence';
+import Constants from "expo-constants";
+
+const extra = Constants.expoConfig?.extra ?? {};
 
 export type StravaActivity = {
   id: number;
@@ -31,7 +34,7 @@ type StateContextType = {
   toggleStreet: (id: string) => void;
   streets: Street[];
   activities: StravaActivity[];
-  loadStreetsFromOSM: (center?: Center, miles?: number) => Promise<Street[]>;
+  loadStreetsFromOSM: (center?: Center, miles?: number, injectedOSM?: any) => Promise<Street[]>;
   loadStreetsFromStravaActivities: (activities: StravaActivity[]) => Promise<StravaActivity[]>;
   loadAndMatchStreets: (center: Center, radiusMiles: number, activities: StravaActivity[]) => Promise<void>;
   progress: number;
@@ -44,8 +47,8 @@ const ctx = createContext<StateContextType | undefined>(undefined);
 
 const initialCenter: Center = {
   name: 'Saved Home',
-  latitude: Number.parseFloat(process.env.EXPO_PUBLIC_DEFAULT_MAP_CENTER_LATITUDE || '47.667120970606'),
-  longitude: Number.parseFloat(process.env.EXPO_PUBLIC_DEFAULT_MAP_CENTER_LONGITUDE || '-122.38431335074893'),
+  latitude: Number.parseFloat(extra.DEFAULT_MAP_CENTER_LATITUDE || '47.667120970606'),
+  longitude: Number.parseFloat(extra.DEFAULT_MAP_CENTER_LONGITUDE || '-122.38431335074893'),
 };
 
 export const StateProvider = ({ children }: { children: ReactNode }) => {
@@ -90,31 +93,7 @@ export const StateProvider = ({ children }: { children: ReactNode }) => {
     };
   }
 
-  async function loadStreetsFromOSM(centerParam?: Center, miles?: number): Promise<Street[]> {
-    const mirrors = [
-      "https://streetsweeper-overpass-hjbthgeffjdqe0hf.westus2-01.azurewebsites.net/api/overpass",
-      `${process.env.EXPO_PUBLIC_OSM_OVERPASS_API_URL}`,
-      `${process.env.EXPO_PUBLIC_OSM_OVERPASS_API_URL_TWO}`,
-      `${process.env.EXPO_PUBLIC_OSM_OVERPASS_API_URL_THREE}`,
-    ];
-
-    const c = centerParam || initialCenter;
-    const rMiles = typeof miles === "number" ? miles : radiusMiles;
-
-    const bbox = milesToBBox(c.latitude, c.longitude, rMiles);
-
-    const query = `
-      [out:json][timeout:25];
-      (
-        way["highway"~"^(residential|tertiary|secondary)$"]
-          (${bbox.minLat},${bbox.minLon},${bbox.maxLat},${bbox.maxLon});
-      );
-      out geom;
-    `;
-
-    setProgressMessage("Loading OSM streets...");
-    setProgress(0);
-
+  async function fetchStreetsFromOverpassAPI(mirrors: string[], query: string): Promise<any> {
     for (let attempt = 0; attempt < mirrors.length; attempt++) {
       try {
         const mirror = mirrors[attempt];
@@ -126,29 +105,59 @@ export const StateProvider = ({ children }: { children: ReactNode }) => {
           throw new Error(`Overpass failed: ${res.status}`);
         }
 
-        const json = await res.json();
-        const elems = json.elements || [];
+        return await res.json();
 
-        const ways: Street[] = elems
-          .filter((e: any) => e.type === "way" && e.geometry?.length)
-          .map((w: any) => ({
-            id: String(w.id),
-            name: w.tags?.name || w.tags?.ref || `OSM ${w.id}`,
-            completed: false,
-            coords: w.geometry.map((g: any) => ({ latitude: g.lat, longitude: g.lon })),
-          }));
-
-        setProgress(100);
-        setProgressMessage("OSM streets loaded");
-
-        setStreets(ways);
-        return ways;
       } catch (err) {
         if (attempt === mirrors.length - 1) throw err;
       }
-    }
 
-    return [];
+      return []; // Fallback empty
+    }
+  }
+
+  async function loadStreetsFromOSM(centerParam?: Center, miles?: number, injectedOSM?: any): Promise<Street[]> {
+    const mirrors = [
+      "https://streetsweeper-overpass-hjbthgeffjdqe0hf.westus2-01.azurewebsites.net/api/overpass",
+      `${extra.OSM_OVERPASS_API_URL}`,
+      `${extra.OSM_OVERPASS_API_URL_TWO}`,
+      `${extra.OSM_OVERPASS_API_URL_THREE}`,
+    ];
+
+    const c = centerParam || initialCenter;
+    const rMiles = typeof miles === "number" ? miles : radiusMiles;
+
+    const bbox = milesToBBox(c.latitude, c.longitude, rMiles);
+
+    const query = `
+      [out:json][timeout:25];
+      (
+        way["highway"~"^(residential|tertiary|secondary|primary)$"]
+          (${bbox.minLat},${bbox.minLon},${bbox.maxLat},${bbox.maxLon});
+      );
+      out geom;
+    `;
+
+    setProgressMessage("Loading OSM streets...");
+    setProgress(0);
+
+    const json: any = injectedOSM ? injectedOSM : await fetchStreetsFromOverpassAPI(mirrors, query);
+
+    const elems = json.elements || [];
+
+    const ways: Street[] = elems
+      .filter((e: any) => e.type === "way" && e.geometry?.length)
+      .map((w: any) => ({
+        id: String(w.id),
+        name: w.tags?.name || w.tags?.ref || `OSM ${w.id}`,
+        completed: false,
+        coords: w.geometry.map((g: any) => ({ latitude: g.lat, longitude: g.lon })),
+      }));
+
+    setProgress(100);
+    setProgressMessage("OSM streets loaded");
+
+    setStreets(ways);
+    return ways;
   }
 
   async function loadStreetsFromStravaActivities(raw: StravaActivity[]): Promise<StravaActivity[]> {
@@ -249,7 +258,6 @@ export const StateProvider = ({ children }: { children: ReactNode }) => {
         toggleStreet,
       }}
     >
-
       {children}
     </ctx.Provider>
   );

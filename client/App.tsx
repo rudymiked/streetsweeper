@@ -5,6 +5,7 @@ import { createDrawerNavigator } from '@react-navigation/drawer';
 import { StateProvider } from './src/state/StateContext';
 import MapScreen from './src/screens/MapScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
+import Constants from "expo-constants";
 
 let StatusBar: any = null;
 if (Platform.OS !== 'web') {
@@ -15,6 +16,11 @@ const Drawer = createDrawerNavigator();
 const SCREEN_WIDTH = Dimensions.get('window').width;
 
 export default function App() {
+
+  if (!Constants.expoConfig || !Constants.expoConfig.extra) {
+    throw new Error("Missing configuration in app.config.js");
+  }
+
   const [settingsOpen, setSettingsOpen] = useState(false);
   const slideAnim = useRef(new Animated.Value(SCREEN_WIDTH)).current;
 
@@ -52,7 +58,7 @@ export default function App() {
           position: 'absolute',
           top: 0,
           right: 0,
-          width: SCREEN_WIDTH * 0.8,
+          width: SCREEN_WIDTH * 0.2,
           height: '100%',
           backgroundColor: 'white',
           transform: [{ translateX: slideAnim }],

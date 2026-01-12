@@ -20,6 +20,10 @@ import {
   DebugEvidencePoint
 } from "../../utils/debugOverlay.types";
 
+import * as FileSystem from 'expo-file-system';
+import { saveJsonFile } from "../../utils/saveJson";
+import { Alert, Platform } from "react-native";
+
 export type Street = {
   id: string;
   name: string;
@@ -271,10 +275,25 @@ export async function matchStreetsKDTree(
     updated.push({ ...street, completed: matched });
   }
 
+  saveMatchResults(updated, { segments: debugSegments });
+
   return {
     streets: updated,
     debug: { segments: debugSegments }
   };
+}
+
+async function saveMatchResults(matchedStreets: Street[], debugOverlay: DebugOverlayData) {
+  const results = {
+    streets: matchedStreets,
+    debug: debugOverlay
+  };
+
+  const path = await saveJsonFile('matchResults.json', results);
+
+  if (Platform.OS !== 'web') {
+    Alert.alert('Saved', `File saved to: ${path}`);
+  }
 }
 
 // ---------------------------------------------------------

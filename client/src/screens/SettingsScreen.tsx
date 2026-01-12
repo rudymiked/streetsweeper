@@ -15,6 +15,11 @@ import Constants from 'expo-constants';
 import { IconButton } from 'react-native-paper';
 import { sleep } from '../utils/utils';
 
+import osmMock from '../../assets/mock/osm.json';
+import stravaMock from '../../assets/mock/strava.json';
+
+const extra = Constants.expoConfig?.extra ?? {};
+
 let Location: any = null;
 const isWeb = typeof Platform === 'undefined' || Platform?.OS === 'web';
 if (!isWeb) {
@@ -125,6 +130,35 @@ export default function SettingsScreen({ closePanel }: { closePanel: () => void 
     }
   }
 
+  async function loadFromJson() {
+    try {
+      setStatusMessage('Loading mock data...');
+      setLoadingFlag('all', true);
+
+      const mockStreets = osmMock;
+      const mockActivities: StravaActivity[] = stravaMock.map((act: any) => ({
+        ...act,
+        matchedStreets: [],
+      }));
+
+      // Load OSM streets into state
+      await loadStreetsFromOSM(center, radiusMiles || 2, mockStreets);
+      // Load Strava activities into state
+      await loadStreetsFromStravaActivities(mockActivities);
+
+      // Run matching
+      await loadAndMatchStreets(center, radiusMiles || 2, mockActivities);
+
+      setStatusMessage('Done');
+      Alert.alert('Complete', 'Loaded streets + Strava from JSON');
+    } catch (err: any) {
+      setStatusMessage(err.message || 'Error');
+      Alert.alert('Error', err.message || 'Could not load JSON data');
+    } finally {
+      setLoadingFlag('all', false);
+    }
+  }
+
   async function loadStravaActivities(accessToken: string): Promise<StravaActivity[]> {
     setStatusMessage('Loading activities...');
 
@@ -133,7 +167,7 @@ export default function SettingsScreen({ closePanel }: { closePanel: () => void 
     const perPage = 200;
 
     while (true) {
-      const url = `${process.env.EXPO_PUBLIC_STRAVA_API_BASE_URL}/athlete/activities?per_page=${perPage}&page=${page}`;
+      const url = `${extra.STRAVA_API_BASE_URL}/athlete/activities?per_page=${perPage}&page=${page}`;
       const res = await fetch(url, {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
@@ -158,11 +192,14 @@ export default function SettingsScreen({ closePanel }: { closePanel: () => void 
     clientSecret: string,
     scopes: string
   ): Promise<string> {
-    const redirectUriWeb = `${window.location.origin}${window.location.pathname}`;
+    const AuthSession = require('expo-auth-session');
+    const WebBrowser = require('expo-web-browser');
 
-    if (isWeb) {
+    if (Platform.OS === 'web') {
+      const redirectUriWeb = AuthSession.makeRedirectUri({ preferLocalhost: true });
+
       const authUrl =
-        `${process.env.EXPO_PUBLIC_STRAVA_AUTHORIZE_URL}` +
+        `${extra.STRAVA_AUTHORIZE_URL}` +
         `?client_id=${clientId}` +
         `&response_type=code` +
         `&redirect_uri=${encodeURIComponent(redirectUriWeb)}` +
@@ -206,13 +243,12 @@ export default function SettingsScreen({ closePanel }: { closePanel: () => void 
       });
     }
 
-    const AuthSession: any = require('expo-auth-session');
-    const WebBrowser: any = require('expo-web-browser');
+    // Mobile (Android/iOS)
 
     const redirectUri = AuthSession.makeRedirectUri({ preferLocalhost: true });
 
     const authUrl =
-      `${process.env.EXPO_PUBLIC_STRAVA_AUTHORIZE_URL}` +
+      `${extra.STRAVA_AUTHORIZE_URL}` +
       `?client_id=${clientId}` +
       `&response_type=code` +
       `&redirect_uri=${encodeURIComponent(redirectUri)}` +
@@ -238,7 +274,7 @@ export default function SettingsScreen({ closePanel }: { closePanel: () => void 
     clientId: number,
     clientSecret: string
   ): Promise<string> {
-    const res = await fetch(`${process.env.EXPO_PUBLIC_STRAVA_AUTHORIZE_TOKEN_URL}`, {
+    const res = await fetch(`${extra.STRAVA_AUTHORIZE_TOKEN_URL}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -367,6 +403,13 @@ export default function SettingsScreen({ closePanel }: { closePanel: () => void 
       <View style={{ height: 12 }} />
 
       <Button
+        title="Load Strava and Streets from JSON"
+        onPress={loadFromJson}
+      />
+
+      <View style={{ height: 12 }} />
+
+      <Button
         color="#FC4C02"
         title={loading.all ? 'Working...' : 'Connect to Strava & Populate Streets'}
         onPress={connectLoadAll}
@@ -419,21 +462,32 @@ export default function SettingsScreen({ closePanel }: { closePanel: () => void 
       <View style={{ height: 1, backgroundColor: '#ccc', marginVertical: 12 }} />
       <View style={{ height: 12 }} />
 
-      <Text style={styles.title}>Radius: {radiusMiles.toFixed(1)} mi</Text>
-      <View style={styles.container}>
-        <TouchableOpacity
-          onPress={() => setRadiusMiles(Math.max(0.5, +(radiusMiles - 0.5).toFixed(1)))}
-          style={styles.input}
-        >
-          <Text>-</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={() => setRadiusMiles(Math.min(5, +(radiusMiles + 0.5).toFixed(1)))}
-          style={styles.input}
-        >
-          <Text>+</Text>
-        </TouchableOpacity>
+      <View style={styles.row}>
+        <Text style={styles.title}>
+          Radius: {radiusMiles.toFixed(1)} mi
+        </Text>
+
+        <View style={styles.buttons}>
+          <TouchableOpacity
+            onPress={() =>
+              setRadiusMiles(Math.max(0.5, +(radiusMiles - 0.5).toFixed(1)))
+            }
+            style={styles.input}
+          >
+            <Text>-</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() =>
+              setRadiusMiles(Math.min(5, +(radiusMiles + 0.5).toFixed(1)))
+            }
+            style={styles.input}
+          >
+            <Text>+</Text>
+          </TouchableOpacity>
+        </View>
       </View>
+
     </View>
   );
 }
@@ -441,5 +495,15 @@ export default function SettingsScreen({ closePanel }: { closePanel: () => void 
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 16, backgroundColor: 'white' },
   title: { fontSize: 20, fontWeight: '700', marginBottom: 8 },
-  input: { borderWidth: 1, borderColor: '#ccc', padding: 10, borderRadius: 6, marginVertical: 8 },
+  input: { borderWidth: 1, borderColor: '#ccc', padding: 10, borderRadius: 6, marginVertical: 8, width: '15%', alignItems: 'center', justifyContent: 'center' },
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+
+  buttons: {
+    flexDirection: "row",
+    gap: 10, // or marginRight/marginLeft if older RN
+  }
 });
