@@ -8,7 +8,7 @@ import {
   ensureConfidencePane
 } from '../utils/debugConfidenceOverlay';
 
-import { Street } from '../state/core/matcher_kdtree';
+import { Street } from '../state/matching/matcher_kdtree';
 
 interface WebMapViewProps {
   center: { latitude: number; longitude: number };

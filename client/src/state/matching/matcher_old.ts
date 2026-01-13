@@ -1,5 +1,5 @@
-import { Coord } from './geometry/geometry';
-import { streetWasRunStrict } from './geometry/geometry_strict';
+import { Coord } from '../core/geometry/base';
+import { streetWasRunStrict } from '../core/geometry/geometry_strict';
 import { Street } from './matcher_kdtree';
 
 export type StravaActivity = {

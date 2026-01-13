@@ -17,6 +17,7 @@ import { sleep } from '../utils/utils';
 
 import osmMock from '../../assets/mock/osm.json';
 import stravaMock from '../../assets/mock/strava.json';
+import { getEnv } from '../utils/getEnv';
 
 const extra = Constants.expoConfig?.extra ?? {};
 
@@ -130,7 +131,7 @@ export default function SettingsScreen({ closePanel }: { closePanel: () => void 
     }
   }
 
-  async function loadFromJson() {
+  async function loadFromJson(useAI: boolean) {
     try {
       setStatusMessage('Loading mock data...');
       setLoadingFlag('all', true);
@@ -146,12 +147,15 @@ export default function SettingsScreen({ closePanel }: { closePanel: () => void 
       // Load Strava activities into state
       await loadStreetsFromStravaActivities(mockActivities);
 
+      console.log("mockactivities", mockActivities.slice(3));
+      console.log("mockStreets", mockStreets);
       // Run matching
-      await loadAndMatchStreets(center, radiusMiles || 2, mockActivities);
+      await loadAndMatchStreets(center, radiusMiles || 2, mockActivities, useAI, mockStreets);
 
       setStatusMessage('Done');
       Alert.alert('Complete', 'Loaded streets + Strava from JSON');
     } catch (err: any) {
+      console.error(err);
       setStatusMessage(err.message || 'Error');
       Alert.alert('Error', err.message || 'Could not load JSON data');
     } finally {
@@ -167,7 +171,7 @@ export default function SettingsScreen({ closePanel }: { closePanel: () => void 
     const perPage = 200;
 
     while (true) {
-      const url = `${extra.STRAVA_API_BASE_URL}/athlete/activities?per_page=${perPage}&page=${page}`;
+      const url = `${getEnv("EXPO_PUBLIC_STRAVA_API_BASE_URL")}/athlete/activities?per_page=${perPage}&page=${page}`;
       const res = await fetch(url, {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
@@ -199,7 +203,7 @@ export default function SettingsScreen({ closePanel }: { closePanel: () => void 
       const redirectUriWeb = AuthSession.makeRedirectUri({ preferLocalhost: true });
 
       const authUrl =
-        `${extra.STRAVA_AUTHORIZE_URL}` +
+        `${getEnv("EXPO_PUBLIC_STRAVA_AUTHORIZE_URL")}` +
         `?client_id=${clientId}` +
         `&response_type=code` +
         `&redirect_uri=${encodeURIComponent(redirectUriWeb)}` +
@@ -248,7 +252,7 @@ export default function SettingsScreen({ closePanel }: { closePanel: () => void 
     const redirectUri = AuthSession.makeRedirectUri({ preferLocalhost: true });
 
     const authUrl =
-      `${extra.STRAVA_AUTHORIZE_URL}` +
+      `${getEnv("EXPO_PUBLIC_STRAVA_AUTHORIZE_URL")}` +
       `?client_id=${clientId}` +
       `&response_type=code` +
       `&redirect_uri=${encodeURIComponent(redirectUri)}` +
@@ -274,7 +278,7 @@ export default function SettingsScreen({ closePanel }: { closePanel: () => void 
     clientId: number,
     clientSecret: string
   ): Promise<string> {
-    const res = await fetch(`${extra.STRAVA_AUTHORIZE_TOKEN_URL}`, {
+    const res = await fetch(`${getEnv("EXPO_PUBLIC_STRAVA_AUTHORIZE_TOKEN_URL")}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -315,9 +319,8 @@ export default function SettingsScreen({ closePanel }: { closePanel: () => void 
     setStatusMessage('Connecting to Strava...');
 
     try {
-      const expoExtra = (Constants.expoConfig && Constants.expoConfig.extra) || {};
-      const STRAVA_CLIENT_ID = Number(expoExtra.STRAVA_CLIENT_ID) || 0;
-      const STRAVA_CLIENT_SECRET = expoExtra.STRAVA_CLIENT_SECRET || '';
+      const STRAVA_CLIENT_ID = Number(getEnv("EXPO_PUBLIC_STRAVA_CLIENT_ID")) || 0;
+      const STRAVA_CLIENT_SECRET = getEnv("EXPO_PUBLIC_STRAVA_CLIENT_SECRET") || '';
       const STRAVA_SCOPES = 'activity:read_all';
 
       if (!STRAVA_CLIENT_ID || !STRAVA_CLIENT_SECRET) {
@@ -365,7 +368,7 @@ export default function SettingsScreen({ closePanel }: { closePanel: () => void 
       }
 
       setStatusMessage('Loading OSM streets and matching...');
-      await loadAndMatchStreets(center, radiusMiles || 2, activitiesForState);
+      await loadAndMatchStreets(center, radiusMiles || 2, activitiesForState, false);
 
       setStatusMessage('Done');
       Alert.alert('Complete', 'Activities and streets loaded and matched');
@@ -403,8 +406,15 @@ export default function SettingsScreen({ closePanel }: { closePanel: () => void 
       <View style={{ height: 12 }} />
 
       <Button
-        title="Load Strava and Streets from JSON"
-        onPress={loadFromJson}
+        title="Load Strava and Streets from JSON (Classic)"
+        onPress={() => loadFromJson(false)}
+      />
+
+      <View style={{ height: 12 }} />
+
+      <Button
+        title="Load Strava and Streets from JSON (AI)"
+        onPress={() => loadFromJson(true)}
       />
 
       <View style={{ height: 12 }} />

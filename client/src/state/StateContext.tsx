@@ -1,9 +1,11 @@
 import React, { createContext, useContext, useState, ReactNode } from 'react';
 import { sleep } from '../utils/utils';
 import { decodePolyline } from './core/decodePolyline';
-import { matchStreets, Street } from './core/matcher_kdtree';
+import { Street } from './matching/matcher_kdtree';
 import { classify, computeConfidencePerStreet } from '../utils/debugConfidence';
 import Constants from "expo-constants";
+import { matchStreets, matchStreetsAI } from './matching/matcher';
+import { getEnv } from '../utils/getEnv';
 
 const extra = Constants.expoConfig?.extra ?? {};
 
@@ -36,7 +38,7 @@ type StateContextType = {
   activities: StravaActivity[];
   loadStreetsFromOSM: (center?: Center, miles?: number, injectedOSM?: any) => Promise<Street[]>;
   loadStreetsFromStravaActivities: (activities: StravaActivity[]) => Promise<StravaActivity[]>;
-  loadAndMatchStreets: (center: Center, radiusMiles: number, activities: StravaActivity[]) => Promise<void>;
+  loadAndMatchStreets: (center: Center, radiusMiles: number, activities: StravaActivity[], useAI: boolean, injectedOSM?: any) => Promise<void>;
   progress: number;
   progressMessage: string | null;
   setProgress: (n: number) => void;
@@ -47,8 +49,8 @@ const ctx = createContext<StateContextType | undefined>(undefined);
 
 const initialCenter: Center = {
   name: 'Saved Home',
-  latitude: Number.parseFloat(extra.DEFAULT_MAP_CENTER_LATITUDE || '47.667120970606'),
-  longitude: Number.parseFloat(extra.DEFAULT_MAP_CENTER_LONGITUDE || '-122.38431335074893'),
+  latitude: Number.parseFloat(getEnv("EXPO_PUBLIC_DEFAULT_MAP_CENTER_LATITUDE") || '47.667120970606'),
+  longitude: Number.parseFloat(getEnv("EXPO_PUBLIC_DEFAULT_MAP_CENTER_LONGITUDE") || '-122.38431335074893'),
 };
 
 export const StateProvider = ({ children }: { children: ReactNode }) => {
@@ -116,19 +118,24 @@ export const StateProvider = ({ children }: { children: ReactNode }) => {
   }
 
   async function loadStreetsFromOSM(centerParam?: Center, miles?: number, injectedOSM?: any): Promise<Street[]> {
-    const mirrors = [
-      "https://streetsweeper-overpass-hjbthgeffjdqe0hf.westus2-01.azurewebsites.net/api/overpass",
-      `${extra.OSM_OVERPASS_API_URL}`,
-      `${extra.OSM_OVERPASS_API_URL_TWO}`,
-      `${extra.OSM_OVERPASS_API_URL_THREE}`,
-    ];
+    let json;
 
-    const c = centerParam || initialCenter;
-    const rMiles = typeof miles === "number" ? miles : radiusMiles;
+    if (injectedOSM) {
+      json = injectedOSM;
+    } else {
+      const mirrors = [
+        "https://streetsweeper-overpass-hjbthgeffjdqe0hf.westus2-01.azurewebsites.net/api/overpass",
+        `${getEnv("EXPO_PUBLIC_OSM_OVERPASS_API_URL")}`,
+        `${getEnv("EXPO_PUBLIC_OSM_OVERPASS_API_URL_TWO")}`,
+        `${getEnv("EXPO_PUBLIC_OSM_OVERPASS_API_URL_THREE")}`,
+      ];
 
-    const bbox = milesToBBox(c.latitude, c.longitude, rMiles);
+      const c = centerParam || initialCenter;
+      const rMiles = typeof miles === "number" ? miles : radiusMiles;
 
-    const query = `
+      const bbox = milesToBBox(c.latitude, c.longitude, rMiles);
+
+      const query = `
       [out:json][timeout:25];
       (
         way["highway"~"^(residential|tertiary|secondary|primary)$"]
@@ -137,10 +144,11 @@ export const StateProvider = ({ children }: { children: ReactNode }) => {
       out geom;
     `;
 
-    setProgressMessage("Loading OSM streets...");
-    setProgress(0);
+      setProgressMessage("Loading OSM streets...");
+      setProgress(0);
 
-    const json: any = injectedOSM ? injectedOSM : await fetchStreetsFromOverpassAPI(mirrors, query);
+      json = injectedOSM ? injectedOSM : await fetchStreetsFromOverpassAPI(mirrors, query);
+    }
 
     const elems = json.elements || [];
 
@@ -196,21 +204,39 @@ export const StateProvider = ({ children }: { children: ReactNode }) => {
   async function loadAndMatchStreets(
     center: Center,
     radiusMiles: number,
-    activitiesForMatch: StravaActivity[]
+    activities: StravaActivity[],
+    useAI: boolean,
+    injectedOSM?: any
   ) {
-    const base = await loadStreetsFromOSM(center, radiusMiles);
+    if (useAI) {
+      return loadAndMatchStreetsAI(center, radiusMiles, activities, injectedOSM);
+    } else {
+      return loadAndMatchStreetsKD(center, radiusMiles, activities, injectedOSM);
+    }
+  }
+
+  async function loadAndMatchStreetsKD(
+    center: Center,
+    radiusMiles: number,
+    activities: StravaActivity[],
+    injectedOSM?: any
+  ) {
+    const base = await loadStreetsFromOSM(center, radiusMiles, injectedOSM);
+    console.log("base", base);
     if (!base.length) {
+      console.log("base empty");
       setStreets([]);
       return;
     }
 
     console.log(
-      `Matching ${base.length} streets against ${activitiesForMatch.length} activities using matcher_kdtree...`
+      `Matching ${base.length} streets against ${activities.length} activities using matcher_kdtree...`
     );
 
-    const updated = await matchStreets(base, activitiesForMatch, 8);
+    const updated = await matchStreets(base, activities, 8);
 
-    // compute confidence per street
+    console.log(updated);
+
     const streetsWithConfidence = computeConfidencePerStreet(
       updated.streets,
       updated.debug
@@ -219,7 +245,43 @@ export const StateProvider = ({ children }: { children: ReactNode }) => {
       classification: classify(street.confidence)
     }));
 
-    console.log('Streets with confidence:', streetsWithConfidence[0]);
+    console.log("Confidence sample:", streetsWithConfidence.slice(0, 5));
+
+    setStreets(streetsWithConfidence);
+    resetProgress();
+  }
+
+  async function loadAndMatchStreetsAI(
+    center: Center,
+    radiusMiles: number,
+    activitiesForMatch: StravaActivity[],
+    injectedOSM?: any
+  ) {
+    const base = await loadStreetsFromOSM(center, radiusMiles, injectedOSM);
+    console.log("base", base);
+    if (!base.length) {
+      console.log("base empty");
+      setStreets([]);
+      return;
+    }
+
+    console.log(
+      `Matching ${base.length} streets against ${activitiesForMatch.length} activities using matcher_ai...`
+    );
+
+    const updated = await matchStreetsAI(base, activitiesForMatch);
+
+    console.log(updated);
+
+    const streetsWithConfidence = computeConfidencePerStreet(
+      updated!.streets,
+      updated!.debug
+    ).map(street => ({
+      ...street,
+      classification: classify(street.confidence)
+    }));
+
+    console.log("Confidence sample:", streetsWithConfidence.slice(0, 5));
 
     setStreets(streetsWithConfidence);
     resetProgress();

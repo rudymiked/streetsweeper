@@ -3,7 +3,7 @@ import { Switch, View } from 'react-native';
 import WebMapView from './WebMapView';
 import { useAppState } from '../state/StateContext';
 import Slider from '@react-native-community/slider';
-import { Street } from '../state/core/matcher_kdtree';
+import { Street } from '../state/matching/matcher_kdtree';
 
 export default function MapScreenWeb() {
     const {
@@ -54,7 +54,6 @@ export default function MapScreenWeb() {
 
         return minDist <= radiusMiles;
     }
-
 
     return (
         <View style={styles.container}>

@@ -3,16 +3,16 @@ import {
   degToMeters,
   pointToSegmentDistanceMeters,
   segmentsIntersect
-} from "./geometry/base";
+} from "../core/geometry/base";
 
 import {
   sampleSegmentPoints,
   boxesOverlap,
   directionallyAligned
-} from "./geometry/helpers";
+} from "../core/geometry/helpers";
 
-import { KDPoint, KDNode, buildKDTree, kdRangeSearch } from "./kdtree";
-import { decodePolyline } from "./decodePolyline";
+import { KDPoint, KDNode, buildKDTree, kdRangeSearch } from "../core/kdtree";
+import { decodePolyline } from "../core/decodePolyline";
 
 import {
   DebugOverlayData,
@@ -20,9 +20,7 @@ import {
   DebugEvidencePoint
 } from "../../utils/debugOverlay.types";
 
-import * as FileSystem from 'expo-file-system';
-import { saveJsonFile } from "../../utils/saveJson";
-import { Alert, Platform } from "react-native";
+//import { saveJsonFile } from "../../utils/saveJson";
 
 export type Street = {
   id: string;
@@ -111,7 +109,6 @@ export async function matchStreetsKDTree(
   const tree = buildActivityKDTree(activities);
   const updated: Street[] = [];
   const debugSegments: DebugSegmentScore[] = [];
-
   const total = streets.length;
   let rollingConfidence = 0.75; // neutral starting point
 
@@ -289,33 +286,9 @@ async function saveMatchResults(matchedStreets: Street[], debugOverlay: DebugOve
     debug: debugOverlay
   };
 
-  const path = await saveJsonFile('matchResults.json', results);
+  //const path = await saveJsonFile('matchResults.json', results);
 
-  if (Platform.OS !== 'web') {
-    Alert.alert('Saved', `File saved to: ${path}`);
-  }
-}
-
-// ---------------------------------------------------------
-// Raw activity wrapper
-// ---------------------------------------------------------
-export type RawActivity = {
-  id: number;
-  name: string;
-  map: { summary_polyline: string | null };
-};
-
-export async function matchStreets(
-  streets: Street[],
-  activities: RawActivity[],
-  toleranceMeters = 8
-) {
-  const decodedActivities = activities.map(a => ({
-    ...a,
-    decoded: a.map.summary_polyline
-      ? decodePolyline(a.map.summary_polyline)
-      : []
-  }));
-
-  return matchStreetsKDTree(streets, decodedActivities, toleranceMeters);
+  // if (Platform.OS !== 'web') {
+  //   Alert.alert('Saved', `File saved to: ${path}`);
+  // }
 }

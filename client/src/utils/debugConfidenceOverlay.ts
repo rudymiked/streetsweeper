@@ -1,5 +1,5 @@
 import L, { Map as LeafletMap, Layer } from "leaflet";
-import { Street } from "../state/core/matcher_kdtree";
+import { Street } from "../state/matching/matcher_kdtree";
 
 export function confidenceColor(conf: number): string {
   if (conf >= 0.75) return "#00c853";
