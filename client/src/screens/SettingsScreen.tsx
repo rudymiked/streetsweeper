@@ -14,7 +14,6 @@ import { StravaActivity, useAppState } from '../state/StateContext';
 import Constants from 'expo-constants';
 import { IconButton } from 'react-native-paper';
 import { sleep } from '../utils/utils';
-
 import osmMock from '../../assets/mock/osm.json';
 import stravaMock from '../../assets/mock/strava.json';
 import { getEnv } from '../utils/getEnv';

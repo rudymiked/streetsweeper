@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Platform, TouchableOpacity, Text, View, Animated, Dimensions, Pressable } from 'react-native';
+import { Platform, TouchableOpacity, Text, Animated, Dimensions, Pressable } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createDrawerNavigator } from '@react-navigation/drawer';
 import { StateProvider } from './src/state/StateContext';
@@ -38,7 +38,7 @@ export default function App() {
     <StateProvider>
       <NavigationContainer>
         <Drawer.Navigator
-          initialRouteName="Map"
+          initialRouteName="StreetSweeper"
           screenOptions={{
             headerShown: true,
             headerRight: () => (
@@ -48,7 +48,7 @@ export default function App() {
             ),
           }}
         >
-          <Drawer.Screen name="Map" component={MapScreen} />
+          <Drawer.Screen name="StreetSweeper" component={MapScreen} />
         </Drawer.Navigator>
       </NavigationContainer>
 

@@ -1,13 +1,11 @@
 import React, { useEffect, useRef } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-
 import {
   drawConfidenceOverlay,
   clearConfidenceOverlay,
   ensureConfidencePane
-} from '../utils/debugConfidenceOverlay';
-
+} from '../utils/debug/debugConfidenceOverlay';
 import { Street } from '../state/matching/matcher_kdtree';
 
 interface WebMapViewProps {
@@ -19,6 +17,7 @@ interface WebMapViewProps {
   }>;
   showStravaOverlay: boolean;
   showConfidenceOverlay: boolean;
+  onToggleStreet: (id: string) => void;
 }
 
 export default function WebMapView({
@@ -26,7 +25,8 @@ export default function WebMapView({
   streets,
   activities,
   showStravaOverlay,
-  showConfidenceOverlay
+  showConfidenceOverlay,
+  onToggleStreet
 }: WebMapViewProps) {
   const mapRef = useRef<L.Map | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -85,9 +85,11 @@ export default function WebMapView({
         }
       ).addTo(map);
 
+      layer.on('click', () => onToggleStreet(s.id));
+
       streetLayersRef.current.push(layer);
     });
-  }, [streets]);
+  }, [streets, onToggleStreet]);
 
   // Draw Strava overlay
   useEffect(() => {

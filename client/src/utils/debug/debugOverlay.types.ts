@@ -1,5 +1,5 @@
 // debugOverlay.types.ts
-import { Coord } from "../state/core/geometry/base";
+import { Coord } from "../../state/core/geometry/base";
 
 export interface DebugEvidencePoint {
   lat: number;

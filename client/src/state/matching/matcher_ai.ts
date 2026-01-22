@@ -1,5 +1,5 @@
 import Constants from "expo-constants";
-import { DebugSegmentScore } from "../../utils/debugOverlay.types";
+import { DebugSegmentScore } from "../../utils/debug/debugOverlay.types";
 import { Coord } from "../core/geometry/base";
 import { Activity, Street } from "./matcher_kdtree";
 import { getEnv } from "../../utils/getEnv";

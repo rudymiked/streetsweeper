@@ -1,4 +1,4 @@
-import { Street } from "../state/matching/matcher_kdtree";
+import { Street } from "../../state/matching/matcher_kdtree";
 import { DebugOverlayData } from "./debugOverlay.types";
 
 export function computeStreetConfidence(data: DebugOverlayData): number {

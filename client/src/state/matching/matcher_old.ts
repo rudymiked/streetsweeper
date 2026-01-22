@@ -1,3 +1,4 @@
+import { getEnv } from '../../utils/getEnv';
 import { Coord } from '../core/geometry/base';
 import { streetWasRunStrict } from '../core/geometry/geometry_strict';
 import { Street } from './matcher_kdtree';
@@ -11,7 +12,7 @@ export type StravaActivity = {
 export async function markStreetsRunByActivitiesAsync(
   streetsInput: Street[],
   activities: (StravaActivity & { decoded: Coord[] })[],
-  toleranceMeters = 8
+  toleranceMeters = getEnv("EXPO_PUBLIC_TOLERANCE_METERS")
 ): Promise<Street[]> {
 
   const updated: Street[] = [];

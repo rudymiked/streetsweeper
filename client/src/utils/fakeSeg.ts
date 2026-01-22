@@ -1,4 +1,4 @@
-import { DebugStreetSegment } from "./debugOverlay.types";
+import { DebugStreetSegment } from "./debug/debugOverlay.types";
 
 export function fakeSeg(): DebugStreetSegment {
   return {

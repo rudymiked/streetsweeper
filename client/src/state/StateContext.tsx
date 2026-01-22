@@ -2,12 +2,10 @@ import React, { createContext, useContext, useState, ReactNode } from 'react';
 import { sleep } from '../utils/utils';
 import { decodePolyline } from './core/decodePolyline';
 import { Street } from './matching/matcher_kdtree';
-import { classify, computeConfidencePerStreet } from '../utils/debugConfidence';
-import Constants from "expo-constants";
+import { classify, computeConfidencePerStreet } from '../utils/debug/debugConfidence';
 import { matchStreets, matchStreetsAI } from './matching/matcher';
 import { getEnv } from '../utils/getEnv';
-
-const extra = Constants.expoConfig?.extra ?? {};
+import { Coord } from './core/geometry/base';
 
 export type StravaActivity = {
   id: number;
@@ -18,7 +16,6 @@ export type StravaActivity = {
 };
 
 type Center = { name: string; latitude: number; longitude: number };
-type Coord = { latitude: number; longitude: number };
 
 type StateContextType = {
   center: Center;
@@ -66,6 +63,7 @@ export const StateProvider = ({ children }: { children: ReactNode }) => {
   const [progressMessage, setProgressMessage] = useState<string | null>(null);
 
   function toggleStreet(id: string) {
+    console.log("street id:", id);
     setStreets(s =>
       s.map(st =>
         st.id === id ? { ...st, completed: !st.completed } : st
@@ -233,7 +231,7 @@ export const StateProvider = ({ children }: { children: ReactNode }) => {
       `Matching ${base.length} streets against ${activities.length} activities using matcher_kdtree...`
     );
 
-    const updated = await matchStreets(base, activities, 8);
+    const updated = await matchStreets(base, activities, getEnv("EXPO_PUBLIC_TOLERANCE_METERS"));
 
     console.log(updated);
 

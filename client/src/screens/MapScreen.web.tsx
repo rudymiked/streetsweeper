@@ -20,6 +20,7 @@ export default function MapScreenWeb() {
         setShowConfidenceOverlay,
         radiusMiles,
         setRadiusMiles,
+        toggleStreet,
     } = useAppState();
 
     const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -63,6 +64,7 @@ export default function MapScreenWeb() {
                 activities={activities}
                 showStravaOverlay={showStravaOverlay}
                 showConfidenceOverlay={showConfidenceOverlay}
+                onToggleStreet={toggleStreet}
             />
 
             <div style={styles.debugOverlay}>

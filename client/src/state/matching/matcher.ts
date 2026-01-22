@@ -1,5 +1,6 @@
 // Raw activity wrapper../core/geometry/geometry_strict
 
+import { getEnv } from "../../utils/getEnv";
 import { decodePolyline } from "../core/decodePolyline";
 import { runMatcherAzure } from "./matcher_ai";
 import { matchStreetsKDTree, Street } from "./matcher_kdtree";
@@ -14,7 +15,7 @@ export type RawActivity = {
 export async function matchStreets(
   streets: Street[],
   activities: RawActivity[],
-  toleranceMeters = 8
+  toleranceMeters = getEnv("EXPO_PUBLIC_TOLERANCE_METERS")
 ) {
   const decodedActivities = activities.map(a => ({
     ...a,
@@ -35,8 +36,7 @@ export async function matchStreets(
 
 export async function matchStreetsAI(
   streets: Street[],
-  activities: RawActivity[],
-  toleranceMeters = 8
+  activities: RawActivity[]
 ) {
   const decodedActivities = activities.map(a => ({
     ...a,

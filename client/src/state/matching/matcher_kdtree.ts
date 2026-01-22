@@ -18,7 +18,9 @@ import {
   DebugOverlayData,
   DebugSegmentScore,
   DebugEvidencePoint
-} from "../../utils/debugOverlay.types";
+} from "../../utils/debug/debugOverlay.types";
+import { getEnv } from "../../utils/getEnv";
+import { loadOverrides } from "../storage/overrides";
 
 //import { saveJsonFile } from "../../utils/saveJson";
 
@@ -26,6 +28,7 @@ export type Street = {
   id: string;
   name: string;
   completed: boolean;
+  manuallyCompleted?: boolean;
   coords: Coord[];
 };
 
@@ -100,7 +103,7 @@ function smoothConfidence(prev: number, current: number, alpha = 0.25) {
 export async function matchStreetsKDTree(
   streets: Street[],
   activities: Activity[],
-  baseTolerance = 8,
+  baseTolerance = getEnv("EXPO_PUBLIC_TOLERANCE_METERS"),
   baseStrongTolerance = 5,
   baseBearingDiff = Math.PI / 2,
   baseMinScoreRatio = 0.35
@@ -269,7 +272,13 @@ export async function matchStreetsKDTree(
 
     const matched = rawRatio >= minScoreRatio;
 
-    updated.push({ ...street, completed: matched });
+    const overrides = await loadOverrides();
+
+    updated.push({
+      ...street,
+      manuallyCompleted: overrides[street.id]?.manuallyCompleted || false,
+      completed: matched || overrides[street.id]?.manuallyCompleted || false,
+    });
   }
 
   saveMatchResults(updated, { segments: debugSegments });
