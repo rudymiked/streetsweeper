@@ -3,7 +3,6 @@ import {
   View,
   Text,
   StyleSheet,
-  Button,
   TextInput,
   Alert,
   Platform,
@@ -17,6 +16,7 @@ import { sleep } from '../utils/utils';
 import osmMock from '../../assets/mock/osm.json';
 import stravaMock from '../../assets/mock/strava.json';
 import { getEnv } from '../utils/getEnv';
+import { palette } from '../theme/palette';
 
 const extra = Constants.expoConfig?.extra ?? {};
 
@@ -24,6 +24,38 @@ let Location: any = null;
 const isWeb = typeof Platform === 'undefined' || Platform?.OS === 'web';
 if (!isWeb) {
   Location = require('expo-location');
+}
+
+type ActionButtonProps = {
+  title: string;
+  onPress: () => void;
+  variant?: 'primary' | 'secondary' | 'danger';
+  disabled?: boolean;
+};
+
+function ActionButton({ title, onPress, variant = 'primary', disabled }: ActionButtonProps) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      disabled={disabled}
+      activeOpacity={0.85}
+      style={[
+        styles.button,
+        variant === 'secondary' && styles.buttonSecondary,
+        variant === 'danger' && styles.buttonDanger,
+        disabled && styles.buttonDisabled,
+      ]}
+    >
+      <Text
+        style={[
+          styles.buttonText,
+          variant === 'secondary' && styles.buttonTextSecondary,
+        ]}
+      >
+        {title}
+      </Text>
+    </TouchableOpacity>
+  );
 }
 
 export default function SettingsScreen({ closePanel }: { closePanel: () => void }) {
@@ -37,6 +69,8 @@ export default function SettingsScreen({ closePanel }: { closePanel: () => void 
     loadAndMatchStreets,
     progress,
     progressMessage,
+    manualEdits,
+    exportManualEdits,
   } = useAppState();
 
   const [loading, setLoading] = useState({
@@ -381,138 +415,167 @@ export default function SettingsScreen({ closePanel }: { closePanel: () => void 
 
   return (
     <View style={styles.container}>
-      <View style={{ alignItems: 'flex-end' }}>
-        <IconButton icon="close" onPress={closePanel} />
+      <View style={styles.headerRow}>
+        <IconButton icon="close" onPress={closePanel} iconColor={palette.muted} />
       </View>
 
       <Text style={styles.title}>Settings</Text>
-      <Text style={{ marginVertical: 8 }}>Current Center: {center.name}</Text>
+      <Text style={[styles.text, styles.sectionLabel]}>Current Center: {center.name}</Text>
 
-      <Button title="Use Current Location" onPress={useCurrentLocation} />
-      <View style={{ height: 12 }} />
+      <ActionButton title="Use Current Location" onPress={useCurrentLocation} />
 
-      <Text>Or enter an address:</Text>
+      <View style={styles.spacer} />
+
+      <Text style={styles.text}>Or enter an address:</Text>
       <TextInput
         style={styles.input}
         placeholder="Enter address"
+        placeholderTextColor={palette.muted}
         value={addressInput}
         onChangeText={setAddressInput}
       />
-      <Button title="Set as Center" onPress={useAddress} />
+      <ActionButton title="Set as Center" onPress={useAddress} variant="secondary" />
 
-      <View style={{ height: 12 }} />
-      <View style={{ height: 1, backgroundColor: '#ccc', marginVertical: 12 }} />
-      <View style={{ height: 12 }} />
+      <View style={styles.divider} />
 
-      <Button
+      <ActionButton
         title="Load Strava and Streets from JSON (Classic)"
         onPress={() => loadFromJson(false)}
+        variant="secondary"
       />
 
-      <View style={{ height: 12 }} />
+      <View style={styles.spacer} />
 
-      <Button
+      <ActionButton
         title="Load Strava and Streets from JSON (AI)"
         onPress={() => loadFromJson(true)}
+        variant="secondary"
       />
 
-      <View style={{ height: 12 }} />
+      <View style={styles.spacer} />
 
-      <Button
-        color="#FC4C02"
+      <ActionButton
         title={loading.all ? 'Working...' : 'Connect to Strava & Populate Streets'}
         onPress={connectLoadAll}
+        variant="danger"
+        disabled={loading.all}
       />
 
-      <View style={{ height: 12 }} />
+      <View style={styles.spacer} />
 
-      <Button
+      <ActionButton
         title={loading.osm ? 'Working...' : 'Only Load Streets'}
         onPress={loadStreetsOnly}
+        variant="primary"
+        disabled={loading.osm}
       />
 
-      <View style={{ height: 12 }} />
+      <View style={styles.spacer} />
 
-      <Button
+      <ActionButton
         title={loading.strava ? 'Working...' : 'Connect to and Load Strava'}
         onPress={() => loadStrava({ showLoading: true })}
+        variant="primary"
+        disabled={loading.strava}
       />
 
-      <View style={{ height: 12 }} />
-
       {statusMessage && (
-        <View style={{ marginTop: 8, flexDirection: 'row', alignItems: 'center' }}>
+        <View style={styles.statusRow}>
           {statusMessage !== 'Done' && (loading.osm || loading.strava || loading.all) && (
-            <ActivityIndicator style={{ marginRight: 8 }} />
+            <ActivityIndicator style={{ marginRight: 8 }} color={palette.accent} />
           )}
-          <Text>{statusMessage}</Text>
+          <Text style={styles.text}>{statusMessage}</Text>
         </View>
       )}
 
       {progress > 0 && (
         <View style={{ marginTop: 12 }}>
-          <Text>
+          <Text style={styles.text}>
             {progressMessage || 'Working...'} ({progress}%)
           </Text>
-          <View style={{ height: 10, backgroundColor: '#eee', borderRadius: 5, marginTop: 4 }}>
+          <View style={styles.progressTrack}>
             <View
-              style={{
-                width: `${progress}%`,
-                height: '100%',
-                backgroundColor: '#4CAF50',
-                borderRadius: 5,
-              }}
+              style={[
+                styles.progressFill,
+                { width: `${progress}%` },
+              ]}
             />
           </View>
         </View>
       )}
 
-      <View style={{ height: 12 }} />
-      <View style={{ height: 1, backgroundColor: '#ccc', marginVertical: 12 }} />
-      <View style={{ height: 12 }} />
+      <View style={styles.divider} />
 
-      <View style={styles.row}>
-        <Text style={styles.title}>
-          Radius: {radiusMiles.toFixed(1)} mi
-        </Text>
-
-        <View style={styles.buttons}>
-          <TouchableOpacity
-            onPress={() =>
-              setRadiusMiles(Math.max(0.5, +(radiusMiles - 0.5).toFixed(1)))
-            }
-            style={styles.input}
-          >
-            <Text>-</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={() =>
-              setRadiusMiles(Math.min(5, +(radiusMiles + 0.5).toFixed(1)))
-            }
-            style={styles.input}
-          >
-            <Text>+</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+      <ActionButton
+        title={"Export Manual Edits"}
+        onPress={exportManualEdits}
+        disabled={manualEdits.length === 0}
+        variant="secondary"
+      />
 
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 16, backgroundColor: 'white' },
-  title: { fontSize: 20, fontWeight: '700', marginBottom: 8 },
-  input: { borderWidth: 1, borderColor: '#ccc', padding: 10, borderRadius: 6, marginVertical: 8, width: '15%', alignItems: 'center', justifyContent: 'center' },
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
+  container: {
+    flex: 1,
+    padding: 16,
+    backgroundColor: palette.panel,
   },
-
-  buttons: {
-    flexDirection: "row",
-    gap: 10, // or marginRight/marginLeft if older RN
-  }
+  headerRow: { alignItems: 'flex-end' },
+  title: {
+    fontSize: 20,
+    fontWeight: '700',
+    marginBottom: 8,
+    color: palette.text,
+    letterSpacing: 0.3,
+  },
+  text: { color: palette.text },
+  sectionLabel: { marginVertical: 8, color: palette.muted },
+  input: {
+    borderWidth: 1,
+    borderColor: palette.panelBorder,
+    backgroundColor: '#0c182d',
+    color: palette.text,
+    padding: 10,
+    borderRadius: 8,
+    marginVertical: 8,
+    width: '100%',
+  },
+  spacer: { height: 12 },
+  divider: { height: 1, backgroundColor: palette.panelBorder, marginVertical: 14 },
+  button: {
+    width: '100%',
+    backgroundColor: palette.accent,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: palette.panelBorder,
+    marginTop: 12,
+  },
+  buttonSecondary: { backgroundColor: '#0c182d' },
+  buttonDanger: { backgroundColor: palette.accentStrong },
+  buttonDisabled: { opacity: 0.55 },
+  buttonText: {
+    fontWeight: '700',
+    letterSpacing: 0.3,
+    color: '#0b1224',
+  },
+  buttonTextSecondary: { color: palette.text },
+  statusRow: { marginTop: 12, flexDirection: 'row', alignItems: 'center' },
+  progressTrack: {
+    height: 10,
+    backgroundColor: palette.panelBorder,
+    borderRadius: 5,
+    marginTop: 4,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: palette.accent,
+    borderRadius: 5,
+  },
 });

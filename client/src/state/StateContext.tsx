@@ -17,11 +17,20 @@ export type StravaActivity = {
 
 type Center = { name: string; latitude: number; longitude: number };
 
+type ManualEdit = {
+  id: string;
+  originalCompleted: boolean;
+  newCompleted: boolean;
+  timestamp: number;
+};
+
 type StateContextType = {
   center: Center;
   setCenter: (c: Center) => void;
   radiusMiles: number;
   setRadiusMiles: (r: number) => void;
+  mapTheme: 'dark' | 'light';
+  setMapTheme: (t: 'dark' | 'light') => void;
   showCompleted: boolean;
   setShowCompleted: (b: boolean) => void;
   showUnrun: boolean;
@@ -40,6 +49,8 @@ type StateContextType = {
   progressMessage: string | null;
   setProgress: (n: number) => void;
   setProgressMessage: (s: string | null) => void;
+  manualEdits: ManualEdit[];
+  exportManualEdits: () => void;
 };
 
 const ctx = createContext<StateContextType | undefined>(undefined);
@@ -53,6 +64,7 @@ const initialCenter: Center = {
 export const StateProvider = ({ children }: { children: ReactNode }) => {
   const [center, setCenter] = useState<Center>(initialCenter);
   const [radiusMiles, setRadiusMiles] = useState<number>(3);
+  const [mapTheme, setMapTheme] = useState<'dark' | 'light'>('dark');
   const [streets, setStreets] = useState<Street[]>([]);
   const [activities, setActivities] = useState<StravaActivity[]>([]);
   const [showCompleted, setShowCompleted] = useState<boolean>(true);
@@ -61,14 +73,41 @@ export const StateProvider = ({ children }: { children: ReactNode }) => {
   const [showConfidenceOverlay, setShowConfidenceOverlay] = useState<boolean>(false);
   const [progress, setProgress] = useState(0);
   const [progressMessage, setProgressMessage] = useState<string | null>(null);
+  const [manualEdits, setManualEdits] = useState<ManualEdit[]>([]);
 
   function toggleStreet(id: string) {
     console.log("street id:", id);
-    setStreets(s =>
-      s.map(st =>
-        st.id === id ? { ...st, completed: !st.completed } : st
-      )
-    );
+    setStreets(s => {
+      const street = s.find(st => st.id === id);
+      if (!street) return s;
+
+      const newCompleted = !street.completed;
+      
+      // Record this manual edit
+      setManualEdits(edits => {
+        const existingEditIndex = edits.findIndex(e => e.id === id);
+        const newEdit: ManualEdit = {
+          id,
+          originalCompleted: street.completed,
+          newCompleted,
+          timestamp: Date.now()
+        };
+        
+        if (existingEditIndex >= 0) {
+          // Update existing edit
+          const updated = [...edits];
+          updated[existingEditIndex] = newEdit;
+          return updated;
+        } else {
+          // Add new edit
+          return [...edits, newEdit];
+        }
+      });
+      
+      return s.map(st =>
+        st.id === id ? { ...st, completed: newCompleted } : st
+      );
+    });
   }
 
   function resetProgress() {
@@ -76,6 +115,37 @@ export const StateProvider = ({ children }: { children: ReactNode }) => {
       setProgress(0);
       setProgressMessage(null);
     }, 800);
+  }
+
+  function exportManualEdits() {
+    const alteredEdits = manualEdits.filter(edit => edit.originalCompleted !== edit.newCompleted);
+    
+    const exportData = {
+      timestamp: new Date().toISOString(),
+      location: center,
+      editCount: alteredEdits.length,
+      edits: alteredEdits.map(edit => {
+        const street = streets.find(s => s.id === edit.id);
+        return {
+          id: edit.id,
+          originalCompleted: edit.originalCompleted,
+          newCompleted: edit.newCompleted,
+          coords: street?.coords || [],
+          timestamp: new Date(edit.timestamp).toISOString()
+        };
+      })
+    };
+
+    const jsonString = JSON.stringify(exportData, null, 2);
+    const blob = new Blob([jsonString], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `manual-edits-${Date.now()}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   }
 
   function milesToBBox(lat: number, lon: number, radiusMiles: number) {
@@ -292,6 +362,8 @@ export const StateProvider = ({ children }: { children: ReactNode }) => {
         setCenter,
         radiusMiles,
         setRadiusMiles,
+        mapTheme,
+        setMapTheme,
         streets,
         activities,
         loadStreetsFromOSM,
@@ -316,6 +388,8 @@ export const StateProvider = ({ children }: { children: ReactNode }) => {
 
         // Manual toggling
         toggleStreet,
+        manualEdits,
+        exportManualEdits,
       }}
     >
       {children}

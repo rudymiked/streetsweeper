@@ -6,6 +6,7 @@ import { StateProvider } from './src/state/StateContext';
 import MapScreen from './src/screens/MapScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import Constants from "expo-constants";
+import { palette } from './src/theme/palette';
 
 let StatusBar: any = null;
 if (Platform.OS !== 'web') {
@@ -41,9 +42,16 @@ export default function App() {
           initialRouteName="StreetSweeper"
           screenOptions={{
             headerShown: true,
+            headerStyle: { backgroundColor: palette.panel },
+            headerTintColor: palette.text,
+            headerTitleStyle: { color: palette.text, letterSpacing: 0.3 },
+            drawerStyle: { backgroundColor: palette.panel },
+            drawerActiveTintColor: palette.accent,
+            drawerInactiveTintColor: palette.muted,
+            sceneContainerStyle: { backgroundColor: '#0b1224' },
             headerRight: () => (
               <TouchableOpacity onPress={toggleSettings} style={{ paddingRight: 16 }}>
-                <Text style={{ fontSize: 20 }}>⚙️</Text>
+                <Text style={{ fontSize: 20, color: palette.accent }}>⚙️</Text>
               </TouchableOpacity>
             ),
           }}
@@ -58,15 +66,17 @@ export default function App() {
           position: 'absolute',
           top: 0,
           right: 0,
-          width: SCREEN_WIDTH * 0.2,
+          width: Platform.OS === 'web' ? SCREEN_WIDTH * 0.2 : '100%',
           height: '100%',
-          backgroundColor: 'white',
+          backgroundColor: palette.panel,
           transform: [{ translateX: slideAnim }],
           shadowColor: '#000',
-          shadowOpacity: 0.2,
-          shadowRadius: 10,
+          shadowOpacity: 0.35,
+          shadowRadius: 12,
           elevation: 10,
           zIndex: 100,
+          borderLeftWidth: Platform.OS === 'web' ? 1 : 0,
+          borderLeftColor: palette.panelBorder,
         }}
       >
         <SettingsScreen closePanel={() => setSettingsOpen(false)} />
