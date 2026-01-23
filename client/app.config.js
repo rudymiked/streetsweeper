@@ -5,11 +5,11 @@ module.exports = () => ({
     slug: "streetsweeper",
     version: "1.0.0",
     orientation: "portrait",
-    icon: "./assets/icon.png",
+    icon: "./assets/streetsweeperlogo.png",
     userInterfaceStyle: "light",
     newArchEnabled: true,
     splash: {
-        image: "./assets/splash-icon.png",
+        image: "./assets/streetsweeperlogo.png",
         resizeMode: "contain",
         backgroundColor: "#ffffff"
     },
@@ -23,7 +23,7 @@ module.exports = () => ({
     android: {
         package: "com.rudysoftware.streetsweeper",
         adaptiveIcon: {
-            foregroundImage: "./assets/adaptive-icon.png",
+            foregroundImage: "./assets/streetsweeperlogo.png",
             backgroundColor: "#ffffff"
         },
         edgeToEdgeEnabled: true,
@@ -35,7 +35,7 @@ module.exports = () => ({
         }
     },
     web: {
-        favicon: "./assets/favicon.png"
+        favicon: "./assets/streetsweeperlogo.png"
     },
     scheme: "myapp",
     extra: {

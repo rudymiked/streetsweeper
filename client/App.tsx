@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Platform, TouchableOpacity, Text, Animated, Dimensions, Pressable } from 'react-native';
+import { Image } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createDrawerNavigator } from '@react-navigation/drawer';
 import { StateProvider } from './src/state/StateContext';
@@ -44,11 +45,17 @@ export default function App() {
             headerShown: true,
             headerStyle: { backgroundColor: palette.panel },
             headerTintColor: palette.text,
+            headerTitle: () => <Text style={{ color: palette.text }}>StreetSweeper</Text>,
             headerTitleStyle: { color: palette.text, letterSpacing: 0.3 },
+            headerLeft: () => (
+              <Image
+                source={require('./assets/streetsweeperlogo.png')}
+                style={{ width: 40, height: 40, marginLeft: 16, resizeMode: 'contain' }}
+              />
+            ),
             drawerStyle: { backgroundColor: palette.panel },
             drawerActiveTintColor: palette.accent,
             drawerInactiveTintColor: palette.muted,
-            sceneContainerStyle: { backgroundColor: '#0b1224' },
             headerRight: () => (
               <TouchableOpacity onPress={toggleSettings} style={{ paddingRight: 16 }}>
                 <Text style={{ fontSize: 20, color: palette.accent }}>⚙️</Text>

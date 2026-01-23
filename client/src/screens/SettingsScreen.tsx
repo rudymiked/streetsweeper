@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   TouchableOpacity,
 } from 'react-native';
+import Slider from '@react-native-community/slider';
 import { StravaActivity, useAppState } from '../state/StateContext';
 import Constants from 'expo-constants';
 import { IconButton } from 'react-native-paper';
@@ -81,6 +82,15 @@ export default function SettingsScreen({ closePanel }: { closePanel: () => void 
 
   const [addressInput, setAddressInput] = useState('');
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+
+  const handleRadiusChange = (val: number) => {
+    // Ensure numeric updates (slider on web can send stringy numbers)
+    const numeric = typeof val === 'number' ? val : Number(val);
+    if (!Number.isNaN(numeric)) {
+      const clamped = Math.min(10, Math.max(0.5, numeric));
+      setRadiusMiles(clamped);
+    }
+  };
 
   function setLoadingFlag(key: keyof typeof loading, value: boolean) {
     setLoading(prev => ({ ...prev, [key]: value }));
@@ -435,6 +445,33 @@ export default function SettingsScreen({ closePanel }: { closePanel: () => void 
         onChangeText={setAddressInput}
       />
       <ActionButton title="Set as Center" onPress={useAddress} variant="secondary" />
+
+      <View style={styles.spacer} />
+      <Text style={styles.text}>Load radius (mi): {radiusMiles.toFixed(1)}</Text>
+      {Platform.OS === 'web' ? (
+        <input
+          type="range"
+          min={0.5}
+          max={10}
+          step={0.1}
+          value={radiusMiles}
+          onChange={(e) => handleRadiusChange(parseFloat(e.target.value))}
+          style={{ width: '100%', marginTop: 8 }}
+        />
+      ) : (
+        <Slider
+          minimumValue={0.5}
+          maximumValue={10}
+          step={0.1}
+          value={radiusMiles}
+          onValueChange={handleRadiusChange}
+          onSlidingComplete={handleRadiusChange}
+          minimumTrackTintColor={palette.accentStrong}
+          maximumTrackTintColor={palette.panelBorder}
+          thumbTintColor={palette.accent}
+          style={{ width: '100%', marginTop: 8 }}
+        />
+      )}
 
       <View style={styles.divider} />
 

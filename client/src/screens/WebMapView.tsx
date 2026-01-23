@@ -64,6 +64,13 @@ export default function WebMapView({
     };
   }, []);
 
+  // Recenter when center updates
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    map.setView([center.latitude, center.longitude], map.getZoom());
+  }, [center.latitude, center.longitude]);
+
   // Base map theme switcher
   useEffect(() => {
     const map = mapRef.current;

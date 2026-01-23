@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, Switch, Platform, TouchableOpacity } from 'react-native';
 import Slider from '@react-native-community/slider';
 import { useAppState } from '../state/StateContext';
@@ -36,6 +36,7 @@ export default function MapScreen() {
   } = useAppState();
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const mapRef = useRef<any>(null);
 
   const defaultRegion = {
     latitude: center.latitude,
@@ -43,6 +44,18 @@ export default function MapScreen() {
     latitudeDelta: 0.02,
     longitudeDelta: 0.02,
   };
+
+  // Recenter native map when center changes
+  useEffect(() => {
+    if (mapRef.current && center) {
+      mapRef.current.animateToRegion({
+        latitude: center.latitude,
+        longitude: center.longitude,
+        latitudeDelta: 0.02,
+        longitudeDelta: 0.02,
+      }, 300);
+    }
+  }, [center.latitude, center.longitude]);
 
   function haversineMiles(a: any, b: any) {
     const toRad = (v: number) => (v * Math.PI) / 180;
@@ -100,6 +113,7 @@ export default function MapScreen() {
         style={styles.map}
         initialRegion={defaultRegion}
         showsUserLocation
+        ref={mapRef}
         customMapStyle={mapTheme === 'dark' ? darkMapStyle : lightMapStyle}
       >
         {visible.map((s) => (
