@@ -29,11 +29,20 @@ jobs:
           npm install
           npm run build --if-present
       
+      - name: Prepare deployment package
+        shell: powershell
+        run: |
+          mkdir -p deploy
+          Copy-Item client/package*.json deploy/ -ErrorAction SilentlyContinue
+          Copy-Item client/dist deploy/dist -Recurse -ErrorAction SilentlyContinue
+          Copy-Item client/.web deploy/.web -Recurse -ErrorAction SilentlyContinue
+          Copy-Item client/web-build deploy/web-build -Recurse -ErrorAction SilentlyContinue
+      
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
         with:
           name: node-app
-          path: client
+          path: deploy
 
   deploy:
     runs-on: ubuntu-latest
