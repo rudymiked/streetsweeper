@@ -10,6 +10,7 @@ import Constants from "expo-constants";
 import { palette } from './src/theme/palette';
 
 let StatusBar: any = null;
+
 if (Platform.OS !== 'web') {
   StatusBar = require('expo-status-bar').StatusBar;
 }
