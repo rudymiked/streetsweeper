@@ -40,3 +40,4 @@ yarn-error.*
 /ios
 /android
 .vscode/*
+client/package-lock.json

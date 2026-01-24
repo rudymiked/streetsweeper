@@ -118,10 +118,6 @@ export async function matchStreetsKDTree(
   for (let i = 0; i < streets.length; i++) {
     const street = streets[i];
 
-    // if (i % 100 === 0) {
-    //   console.log(`KD matcher progress: ${i}/${total}`);
-    // }
-
     let streetScore = 0;
     let streetMaxScore = 0;
 
