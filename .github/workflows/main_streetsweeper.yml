@@ -36,8 +36,6 @@ jobs:
           Copy-Item client/package*.json deploy/ -ErrorAction SilentlyContinue
           Copy-Item client/server.js deploy/ -ErrorAction SilentlyContinue
           Copy-Item client/dist deploy/dist -Recurse -ErrorAction SilentlyContinue
-          Copy-Item client/.web deploy/.web -Recurse -ErrorAction SilentlyContinue
-          Copy-Item client/web-build deploy/web-build -Recurse -ErrorAction SilentlyContinue
       
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
