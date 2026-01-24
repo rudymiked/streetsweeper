@@ -74,7 +74,7 @@ export default function App() {
           position: 'absolute',
           top: 0,
           right: 0,
-          width: Platform.OS === 'web' ? SCREEN_WIDTH * 0.2 : '100%',
+          width: Platform.OS === 'web' && SCREEN_WIDTH > 768 ? SCREEN_WIDTH * 0.2 : '100%',
           height: '100%',
           backgroundColor: palette.panel,
           transform: [{ translateX: slideAnim }],
@@ -83,7 +83,7 @@ export default function App() {
           shadowRadius: 12,
           elevation: 10,
           zIndex: 100,
-          borderLeftWidth: Platform.OS === 'web' ? 1 : 0,
+          borderLeftWidth: Platform.OS === 'web' && SCREEN_WIDTH > 768 ? 1 : 0,
           borderLeftColor: palette.panelBorder,
         }}
       >
