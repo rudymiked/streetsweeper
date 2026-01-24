@@ -37,6 +37,8 @@ jobs:
           Copy-Item client/server.js deploy/ -ErrorAction SilentlyContinue
           Copy-Item client/web.config deploy/ -ErrorAction SilentlyContinue
           Copy-Item client/dist deploy/dist -Recurse -ErrorAction SilentlyContinue
+          cd deploy
+          npm install --production
       
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
