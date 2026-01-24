@@ -13,6 +13,7 @@
     "test:perf": "jest __tests__/performance.test.js --runInBand"
   },
   "dependencies": {
+    "express": "^4.18.2",
     "@azure/openai": "^2.0.0",
     "@expo/config": "~12.0.12",
     "@react-leaflet/core": "^3.0.0",
