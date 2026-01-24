@@ -11,7 +11,7 @@ on:
 
 jobs:
   build:
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     permissions:
       contents: read #This is required for actions/checkout
 
@@ -23,7 +23,7 @@ jobs:
         with:
           node-version: '22.x'
 
-      - name: npm install, build, and test (client)
+      - name: npm install and build (client)
         working-directory: client
         run: |
           npm install
@@ -35,7 +35,6 @@ jobs:
           mkdir -p deploy
           Copy-Item client/package*.json deploy/ -ErrorAction SilentlyContinue
           Copy-Item client/server.js deploy/ -ErrorAction SilentlyContinue
-          Copy-Item client/web.config deploy/ -ErrorAction SilentlyContinue
           Copy-Item client/dist deploy/dist -Recurse -ErrorAction SilentlyContinue
           cd deploy
           npm install --production
