@@ -103,7 +103,7 @@ function smoothConfidence(prev: number, current: number, alpha = 0.25) {
 export async function matchStreetsKDTree(
   streets: Street[],
   activities: Activity[],
-  baseTolerance = getEnv("EXPO_PUBLIC_TOLERANCE_METERS"),
+  baseTolerance = Number(getEnv("EXPO_PUBLIC_TOLERANCE_METERS")) || 10,
   baseStrongTolerance = 5,
   baseBearingDiff = Math.PI / 2,
   baseMinScoreRatio = 0.35
