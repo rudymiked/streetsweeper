@@ -9,6 +9,7 @@ import {
 import { Street } from '../state/matching/matcher_kdtree';
 import { palette } from '../theme/palette';
 import { PlannedRoute } from '../state/routing/routePlanner';
+import { PolygonPoint } from '../state/StateContext';
 
 interface WebMapViewProps {
   center: { latitude: number; longitude: number };
@@ -24,6 +25,9 @@ interface WebMapViewProps {
   plannedRoute?: PlannedRoute | null;
   pinMode?: boolean;
   onMapClick?: (lat: number, lon: number) => void;
+  isDrawingPolygon?: boolean;
+  polygon?: PolygonPoint[];
+  onPolygonClick?: (lat: number, lon: number) => void;
 }
 
 export default function WebMapView({
@@ -36,7 +40,10 @@ export default function WebMapView({
   onToggleStreet,
   plannedRoute,
   pinMode,
-  onMapClick
+  onMapClick,
+  isDrawingPolygon,
+  polygon = [],
+  onPolygonClick
 }: WebMapViewProps) {
   const mapRef = useRef<L.Map | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -46,6 +53,7 @@ export default function WebMapView({
   const streetLayersRef = useRef<L.Layer[]>([]);
   const stravaLayersRef = useRef<L.Layer[]>([]);
   const routeLayersRef = useRef<L.Layer[]>([]);
+  const polygonLayersRef = useRef<L.Layer[]>([]);
 
   // Initialize map once
   useEffect(() => {
@@ -65,6 +73,9 @@ export default function WebMapView({
 
       mapRef.current.createPane("routePane");
       mapRef.current.getPane("routePane")!.style.zIndex = "600";
+
+      mapRef.current.createPane("polygonPane");
+      mapRef.current.getPane("polygonPane")!.style.zIndex = "650";
 
       ensureConfidencePane(mapRef.current);
     }
@@ -134,11 +145,16 @@ export default function WebMapView({
         }
       ).addTo(map);
 
-      layer.on('click', () => onToggleStreet(s.id));
+      layer.on('click', () => {
+        // Don't toggle streets when in pin mode or drawing polygon
+        if (!pinMode && !isDrawingPolygon) {
+          onToggleStreet(s.id);
+        }
+      });
 
       streetLayersRef.current.push(layer);
     });
-  }, [streets, onToggleStreet]);
+  }, [streets, onToggleStreet, pinMode, isDrawingPolygon]);
 
   // Draw Strava overlay
   useEffect(() => {
@@ -289,7 +305,54 @@ export default function WebMapView({
     }
   }, [plannedRoute]);
 
-  // Handle map clicks for pin placement
+  // Draw polygon
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    // Clear old polygon layers
+    polygonLayersRef.current.forEach(l => map.removeLayer(l));
+    polygonLayersRef.current = [];
+
+    if (polygon.length === 0) return;
+
+    // Draw polygon lines (and fill if closed) first so points render on top
+    if (polygon.length >= 2) {
+      const latlngs = polygon.map(p => [p.latitude, p.longitude] as [number, number]);
+      
+      // Close the polygon if 3+ points
+      if (polygon.length >= 3) {
+        latlngs.push([polygon[0].latitude, polygon[0].longitude]);
+      }
+      
+      const polyline = L.polygon(latlngs, {
+        color: palette.accent,
+        weight: 2,
+        fillColor: palette.accent,
+        fillOpacity: polygon.length >= 3 ? 0.15 : 0,
+        dashArray: polygon.length < 3 ? '5, 10' : undefined,
+        pane: "polygonPane"
+      }).addTo(map);
+      
+      polygonLayersRef.current.push(polyline);
+    }
+
+    // Draw polygon points as markers
+    polygon.forEach((point) => {
+      const marker = L.circleMarker([point.latitude, point.longitude], {
+        radius: 7,
+        color: '#fff',
+        fillColor: palette.accent,
+        fillOpacity: 1,
+        weight: 2,
+        pane: "polygonPane"
+      }).addTo(map);
+      
+      polygonLayersRef.current.push(marker);
+    });
+  }, [polygon]);
+
+  // Handle map clicks for pin placement and polygon drawing
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -297,14 +360,16 @@ export default function WebMapView({
     const handleClick = (e: L.LeafletMouseEvent) => {
       if (pinMode && onMapClick) {
         onMapClick(e.latlng.lat, e.latlng.lng);
+      } else if (isDrawingPolygon && onPolygonClick) {
+        onPolygonClick(e.latlng.lat, e.latlng.lng);
       }
     };
 
     map.on('click', handleClick);
     
-    // Change cursor when in pin mode
+    // Change cursor when in pin mode or drawing polygon
     const container = map.getContainer();
-    if (pinMode) {
+    if (pinMode || isDrawingPolygon) {
       container.style.cursor = 'crosshair';
     } else {
       container.style.cursor = '';
@@ -314,7 +379,7 @@ export default function WebMapView({
       map.off('click', handleClick);
       container.style.cursor = '';
     };
-  }, [pinMode, onMapClick]);
+  }, [pinMode, onMapClick, isDrawingPolygon, onPolygonClick]);
 
   return <div ref={containerRef} style={{ width: '100%', height: '100%' }} />;
 }

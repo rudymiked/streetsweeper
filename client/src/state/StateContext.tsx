@@ -7,6 +7,7 @@ import { matchStreets, matchStreetsAI } from './matching/matcher';
 import { getEnv } from '../utils/getEnv';
 import { Coord } from './core/geometry/base';
 import { PlannedRoute } from './routing/routePlanner';
+import { streetIntersectsPolygon, getPolygonBounds } from '../utils/geometry';
 
 export type StravaActivity = {
   id: number;
@@ -25,11 +26,23 @@ type ManualEdit = {
   timestamp: number;
 };
 
+// Polygon boundary type
+export type PolygonPoint = { latitude: number; longitude: number };
+
+// Filter mode type
+export type FilterMode = 'radius' | 'polygon';
+
 type StateContextType = {
   center: Center;
   setCenter: (c: Center) => void;
   radiusMiles: number;
   setRadiusMiles: (r: number) => void;
+  filterMode: FilterMode;
+  setFilterMode: (m: FilterMode) => void;
+  polygon: PolygonPoint[];
+  setPolygon: (p: PolygonPoint[]) => void;
+  addPolygonPoint: (p: PolygonPoint) => void;
+  clearPolygon: () => void;
   mapTheme: 'dark' | 'light';
   setMapTheme: (t: 'dark' | 'light') => void;
   showCompleted: boolean;
@@ -69,6 +82,8 @@ const initialCenter: Center = {
 export const StateProvider = ({ children }: { children: ReactNode }) => {
   const [center, setCenter] = useState<Center>(initialCenter);
   const [radiusMiles, setRadiusMiles] = useState<number>(3);
+  const [filterMode, setFilterMode] = useState<FilterMode>('radius');
+  const [polygon, setPolygon] = useState<PolygonPoint[]>([]);
   const [mapTheme, setMapTheme] = useState<'dark' | 'light'>('dark');
   const [streets, setStreets] = useState<Street[]>([]);
   const [activities, setActivities] = useState<StravaActivity[]>([]);
@@ -80,6 +95,14 @@ export const StateProvider = ({ children }: { children: ReactNode }) => {
   const [progressMessage, setProgressMessage] = useState<string | null>(null);
   const [manualEdits, setManualEdits] = useState<ManualEdit[]>([]);
   const [plannedRoute, setPlannedRoute] = useState<PlannedRoute | null>(null);
+
+  function addPolygonPoint(point: PolygonPoint) {
+    setPolygon(prev => [...prev, point]);
+  }
+
+  function clearPolygon() {
+    setPolygon([]);
+  }
 
   function clearPlannedRoute() {
     setPlannedRoute(null);
@@ -208,10 +231,33 @@ export const StateProvider = ({ children }: { children: ReactNode }) => {
         `${getEnv("EXPO_PUBLIC_OSM_OVERPASS_API_URL_THREE")}`,
       ];
 
-      const c = centerParam || initialCenter;
-      const rMiles = typeof miles === "number" ? miles : radiusMiles;
-
-      const bbox = milesToBBox(c.latitude, c.longitude, rMiles);
+      // Determine bbox based on filter mode
+      let bbox;
+      if (filterMode === 'polygon' && polygon.length >= 3) {
+        // Use polygon bounds for the query
+        const polygonBounds = getPolygonBounds(polygon);
+        if (polygonBounds) {
+          bbox = {
+            minLat: polygonBounds.minLat,
+            maxLat: polygonBounds.maxLat,
+            minLon: polygonBounds.minLon,
+            maxLon: polygonBounds.maxLon,
+          };
+          console.log("Loading OSM streets for polygon bbox:", bbox);
+        } else {
+          // Fallback to center/radius if polygon bounds fail
+          const c = centerParam || initialCenter;
+          const rMiles = typeof miles === "number" ? miles : radiusMiles;
+          bbox = milesToBBox(c.latitude, c.longitude, rMiles);
+          console.log("Loading OSM streets for radius bbox (polygon fallback):", bbox);
+        }
+      } else {
+        // Use center/radius for the query
+        const c = centerParam || initialCenter;
+        const rMiles = typeof miles === "number" ? miles : radiusMiles;
+        bbox = milesToBBox(c.latitude, c.longitude, rMiles);
+        console.log("Loading OSM streets for radius bbox:", bbox);
+      }
 
       const query = `
       [out:json][timeout:25];
@@ -225,12 +271,12 @@ export const StateProvider = ({ children }: { children: ReactNode }) => {
       setProgressMessage("Loading OSM streets...");
       setProgress(0);
 
-      json = injectedOSM ? injectedOSM : await fetchStreetsFromOverpassAPI(mirrors, query);
+      json = await fetchStreetsFromOverpassAPI(mirrors, query);
     }
 
     const elems = json.elements || [];
 
-    const ways: Street[] = elems
+    let ways: Street[] = elems
       .filter((e: any) => e.type === "way" && e.geometry?.length)
       .map((w: any) => ({
         id: String(w.id),
@@ -238,6 +284,13 @@ export const StateProvider = ({ children }: { children: ReactNode }) => {
         completed: false,
         coords: w.geometry.map((g: any) => ({ latitude: g.lat, longitude: g.lon })),
       }));
+
+    // Filter by polygon if in polygon mode
+    if (filterMode === 'polygon' && polygon.length >= 3) {
+      ways = ways.filter(street => streetIntersectsPolygon(street.coords, polygon));
+      // Clear polygon after loading - it's only used for loading
+      setPolygon([]);
+    }
 
     setProgress(100);
     setProgressMessage("OSM streets loaded");
@@ -372,6 +425,12 @@ export const StateProvider = ({ children }: { children: ReactNode }) => {
         setCenter,
         radiusMiles,
         setRadiusMiles,
+        filterMode,
+        setFilterMode,
+        polygon,
+        setPolygon,
+        addPolygonPoint,
+        clearPolygon,
         mapTheme,
         setMapTheme,
         streets,

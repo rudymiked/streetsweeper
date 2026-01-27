@@ -2,7 +2,6 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { Switch, View } from 'react-native';
 import WebMapView from './WebMapView';
 import { useAppState } from '../state/StateContext';
-import Slider from '@react-native-community/slider';
 import { Street } from '../state/matching/matcher_kdtree';
 import { palette } from '../theme/palette';
 import { planRouteGreedy, getRouteStats, getRouteDirections } from '../state/routing/routePlanner';
@@ -23,8 +22,10 @@ export default function MapScreenWeb() {
         setShowStravaOverlay,
         showConfidenceOverlay,
         setShowConfidenceOverlay,
-        radiusMiles,
-        setRadiusMiles,
+        filterMode,
+        polygon,
+        addPolygonPoint,
+        clearPolygon,
         mapTheme,
         setMapTheme,
         toggleStreet,
@@ -59,36 +60,11 @@ export default function MapScreenWeb() {
         return () => window.removeEventListener('resize', handleResize);
     }, []);
 
+    // Streets are already filtered by polygon/radius at load time
+    // Here we only filter by completion status for display
     const visible = streets.filter((s) => {
-        const passesCompletion =
-            (s.completed && showCompleted) ||
-            (!s.completed && showUnrun);
-
-        return passesCompletion && streetWithinRadius(s, center, radiusMiles);
+        return (s.completed && showCompleted) || (!s.completed && showUnrun);
     });
-
-    function streetWithinRadius(street: Street, center: { latitude: number; longitude: number }, radiusMiles: number) {
-        const R = 3958.8; // Earth radius in miles
-
-        // Compute min distance from any street point to center
-        let minDist = Infinity;
-
-        for (const c of street.coords) {
-            const dLat = (c.latitude - center.latitude) * (Math.PI / 180);
-            const dLon = (c.longitude - center.longitude) * (Math.PI / 180);
-
-            const a =
-                Math.sin(dLat / 2) ** 2 +
-                Math.cos(center.latitude * Math.PI / 180) *
-                Math.cos(c.latitude * Math.PI / 180) *
-                Math.sin(dLon / 2) ** 2;
-
-            const dist = 2 * R * Math.asin(Math.sqrt(a));
-            minDist = Math.min(minDist, dist);
-        }
-
-        return minDist <= radiusMiles;
-    }
 
     function parseCoords(input: string): { latitude: number; longitude: number } | null {
         const trimmed = input.trim();
@@ -198,6 +174,9 @@ export default function MapScreenWeb() {
                 plannedRoute={plannedRoute}
                 pinMode={pinTarget !== null}
                 onMapClick={handleMapClick}
+                isDrawingPolygon={filterMode === 'polygon'}
+                polygon={polygon}
+                onPolygonClick={(lat, lon) => addPolygonPoint({ latitude: lat, longitude: lon })}
             />
 
             {/* Debug Overlay - hidden on mobile */}
@@ -207,7 +186,6 @@ export default function MapScreenWeb() {
                     <div style={styles.debugRow}>Streets<span style={styles.debugValue}>{streets.length}</span></div>
                     <div style={styles.debugRow}>Visible<span style={styles.debugValue}>{visible.length}</span></div>
                     <div style={styles.debugRow}>Activities<span style={styles.debugValue}>{activities.length}</span></div>
-                    <div style={styles.debugRow}>Radius<span style={styles.debugValue}>{radiusMiles.toFixed(1)} mi</span></div>
                 </div>
             )}
 
@@ -275,18 +253,7 @@ export default function MapScreenWeb() {
                         />
                     </View>
 
-                    <div style={styles.sliderLabel}>Radius: {radiusMiles.toFixed(1)} mi</div>
-                    <Slider
-                        minimumValue={0.5}
-                        maximumValue={5}
-                        step={0.1}
-                        value={radiusMiles}
-                        onValueChange={setRadiusMiles}
-                        style={{ width: '100%' }}
-                        minimumTrackTintColor={palette.accentStrong}
-                        maximumTrackTintColor="#1f2e45"
-                        thumbTintColor={palette.accent}
-                    />
+
                 </View>
             )}
 
@@ -706,6 +673,63 @@ const styles: any = {
         color: palette.text,
         fontSize: 14,
         letterSpacing: 0.2,
+    },
+    // Filter Mode Styles
+    filterModeToggle: {
+        display: 'flex',
+        gap: 8,
+        marginBottom: 8,
+    },
+    filterModeBtn: {
+        flex: 1,
+        padding: '8px 12px',
+        background: '#1f2e45',
+        color: palette.muted,
+        border: 'none',
+        borderRadius: 6,
+        cursor: 'pointer',
+        fontSize: 13,
+        transition: 'all 120ms ease',
+    },
+    filterModeBtnActive: {
+        background: palette.accent,
+        color: '#0b1224',
+        fontWeight: 'bold',
+    },
+    polygonControls: {
+        marginTop: 8,
+    },
+    polygonBtn: {
+        width: '100%',
+        padding: '8px 12px',
+        background: palette.accent,
+        color: '#0b1224',
+        border: 'none',
+        borderRadius: 6,
+        cursor: 'pointer',
+        fontSize: 13,
+        fontWeight: 'bold',
+        transition: 'all 120ms ease',
+    },
+    polygonBtnClear: {
+        background: '#ef4444',
+        color: '#fff',
+    },
+    polygonBtnRow: {
+        display: 'flex',
+        gap: 8,
+        marginTop: 8,
+    },
+    polygonInfo: {
+        color: palette.text,
+        fontSize: 13,
+        padding: '4px 0',
+    },
+    polygonHint: {
+        color: palette.accent,
+        fontSize: 12,
+        marginTop: 8,
+        fontStyle: 'italic',
     },
     // Route Planner Styles
     routePlannerButton: {

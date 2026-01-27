@@ -8,6 +8,7 @@ import {
   Platform,
   ActivityIndicator,
   TouchableOpacity,
+  ScrollView,
 } from 'react-native';
 import Slider from '@react-native-community/slider';
 import { StravaActivity, useAppState } from '../state/StateContext';
@@ -65,6 +66,10 @@ export default function SettingsScreen({ closePanel }: { closePanel: () => void 
     setCenter,
     radiusMiles,
     setRadiusMiles,
+    filterMode,
+    setFilterMode,
+    polygon,
+    clearPolygon,
     loadStreetsFromOSM,
     loadStreetsFromStravaActivities,
     loadAndMatchStreets,
@@ -424,7 +429,7 @@ export default function SettingsScreen({ closePanel }: { closePanel: () => void 
   }
 
   return (
-    <View style={styles.container}>
+    <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
       <View style={styles.headerRow}>
         <IconButton icon="close" onPress={closePanel} iconColor={palette.muted} />
       </View>
@@ -447,30 +452,91 @@ export default function SettingsScreen({ closePanel }: { closePanel: () => void 
       <ActionButton title="Set as Center" onPress={useAddress} variant="secondary" />
 
       <View style={styles.spacer} />
-      <Text style={styles.text}>Load radius (mi): {radiusMiles.toFixed(1)}</Text>
-      {Platform.OS === 'web' ? (
-        <input
-          type="range"
-          min={0.5}
-          max={10}
-          step={0.1}
-          value={radiusMiles}
-          onChange={(e) => handleRadiusChange(parseFloat(e.target.value))}
-          style={{ width: '100%', marginTop: 8 }}
-        />
-      ) : (
-        <Slider
-          minimumValue={0.5}
-          maximumValue={10}
-          step={0.1}
-          value={radiusMiles}
-          onValueChange={handleRadiusChange}
-          onSlidingComplete={handleRadiusChange}
-          minimumTrackTintColor={palette.accentStrong}
-          maximumTrackTintColor={palette.panelBorder}
-          thumbTintColor={palette.accent}
-          style={{ width: '100%', marginTop: 8 }}
-        />
+      
+      {/* Filter Mode Toggle */}
+      <Text style={styles.text}>Area Filter Mode</Text>
+      <View style={styles.filterModeToggle}>
+        <TouchableOpacity
+          style={[
+            styles.filterModeBtn,
+            filterMode === 'radius' && styles.filterModeBtnActive
+          ]}
+          onPress={() => setFilterMode('radius')}
+        >
+          <Text style={[
+            styles.filterModeBtnText,
+            filterMode === 'radius' && styles.filterModeBtnTextActive
+          ]}>Radius</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[
+            styles.filterModeBtn,
+            filterMode === 'polygon' && styles.filterModeBtnActive
+          ]}
+          onPress={() => setFilterMode('polygon')}
+        >
+          <Text style={[
+            styles.filterModeBtnText,
+            filterMode === 'polygon' && styles.filterModeBtnTextActive
+          ]}>Polygon</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Radius controls */}
+      {filterMode === 'radius' && (
+        <>
+          <Text style={styles.text}>Load radius (mi): {radiusMiles.toFixed(1)}</Text>
+          {Platform.OS === 'web' ? (
+            <input
+              type="range"
+              min={0.5}
+              max={10}
+              step={0.1}
+              value={radiusMiles}
+              onChange={(e) => handleRadiusChange(parseFloat(e.target.value))}
+              style={{ width: '100%', marginTop: 8 }}
+            />
+          ) : (
+            <Slider
+              minimumValue={0.5}
+              maximumValue={10}
+              step={0.1}
+              value={radiusMiles}
+              onValueChange={handleRadiusChange}
+              onSlidingComplete={handleRadiusChange}
+              minimumTrackTintColor={palette.accentStrong}
+              maximumTrackTintColor={palette.panelBorder}
+              thumbTintColor={palette.accent}
+              style={{ width: '100%', marginTop: 8 }}
+            />
+          )}
+        </>
+      )}
+
+      {/* Polygon controls */}
+      {filterMode === 'polygon' && (
+        <View style={styles.polygonControls}>
+          <Text style={styles.polygonInfo}>
+            {polygon.length} points defined {polygon.length >= 3 ? '✓' : '(need 3+)'}
+          </Text>
+          <View style={styles.polygonBtnRow}>
+            <ActionButton
+              title="Draw Polygon"
+              onPress={closePanel}
+              variant="secondary"
+            />
+            {polygon.length > 0 && (
+              <ActionButton
+                title="Clear"
+                onPress={clearPolygon}
+                variant="danger"
+              />
+            )}
+          </View>
+          <Text style={styles.polygonHint}>
+            Click on the map to add points
+          </Text>
+        </View>
       )}
 
       <View style={styles.divider} />
@@ -550,15 +616,18 @@ export default function SettingsScreen({ closePanel }: { closePanel: () => void 
         variant="secondary"
       />
 
-    </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 16,
     backgroundColor: palette.panel,
+  },
+  contentContainer: {
+    padding: 16,
+    paddingBottom: 40,
   },
   headerRow: { alignItems: 'flex-end' },
   title: {
@@ -614,5 +683,49 @@ const styles = StyleSheet.create({
     height: '100%',
     backgroundColor: palette.accent,
     borderRadius: 5,
+  },
+  filterModeToggle: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 8,
+    marginBottom: 8,
+  },
+  filterModeBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    backgroundColor: '#1f2e45',
+    borderRadius: 6,
+    alignItems: 'center',
+  },
+  filterModeBtnActive: {
+    backgroundColor: palette.accent,
+  },
+  filterModeBtnText: {
+    color: palette.muted,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  filterModeBtnTextActive: {
+    color: '#0b1224',
+  },
+  polygonControls: {
+    marginTop: 8,
+  },
+  polygonBtnRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 4,
+  },
+  polygonInfo: {
+    color: palette.text,
+    fontSize: 14,
+    marginBottom: 8,
+  },
+  polygonHint: {
+    color: palette.muted,
+    fontSize: 13,
+    fontStyle: 'italic',
+    marginTop: 8,
   },
 });
