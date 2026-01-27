@@ -1,11 +1,11 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { Switch, View, ScrollView, TouchableOpacity, Text, Dimensions } from 'react-native';
+import { Switch, View } from 'react-native';
 import WebMapView from './WebMapView';
 import { useAppState } from '../state/StateContext';
 import Slider from '@react-native-community/slider';
 import { Street } from '../state/matching/matcher_kdtree';
 import { palette } from '../theme/palette';
-import { PlannedRoute, planRouteGreedy, planRoute, getRouteStats, getRouteDirections } from '../state/routing/routePlanner';
+import { planRouteGreedy, getRouteStats, getRouteDirections } from '../state/routing/routePlanner';
 
 // Breakpoint for mobile
 const MOBILE_BREAKPOINT = 768;
@@ -325,7 +325,7 @@ export default function MapScreenWeb() {
                 style={isMobile ? styles.routePlannerButtonMobile : styles.routePlannerButton}
                 onClick={() => setRoutePlannerOpen(!routePlannerOpen)}
             >
-                🗺️ {isMobile ? '' : 'Plan Route'}
+                {'Create Route'}
             </button>
 
             {/* Pin Mode Indicator (mobile) */}
