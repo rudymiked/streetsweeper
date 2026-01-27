@@ -1,11 +1,14 @@
-import React, { useState, useCallback } from 'react';
-import { Switch, View, ScrollView, TouchableOpacity, Text } from 'react-native';
+import React, { useState, useCallback, useEffect } from 'react';
+import { Switch, View, ScrollView, TouchableOpacity, Text, Dimensions } from 'react-native';
 import WebMapView from './WebMapView';
 import { useAppState } from '../state/StateContext';
 import Slider from '@react-native-community/slider';
 import { Street } from '../state/matching/matcher_kdtree';
 import { palette } from '../theme/palette';
 import { PlannedRoute, planRouteGreedy, planRoute, getRouteStats, getRouteDirections } from '../state/routing/routePlanner';
+
+// Breakpoint for mobile
+const MOBILE_BREAKPOINT = 768;
 
 export default function MapScreenWeb() {
     const {
@@ -44,6 +47,17 @@ export default function MapScreenWeb() {
     
     // Pin placement state - 'start' or 'end' or null
     const [pinTarget, setPinTarget] = useState<'start' | 'end' | null>(null);
+    
+    // Screen size detection
+    const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' && window.innerWidth < MOBILE_BREAKPOINT);
+    
+    useEffect(() => {
+        const handleResize = () => {
+            setIsMobile(window.innerWidth < MOBILE_BREAKPOINT);
+        };
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
 
     const visible = streets.filter((s) => {
         const passesCompletion =
@@ -186,17 +200,25 @@ export default function MapScreenWeb() {
                 onMapClick={handleMapClick}
             />
 
-            <div style={styles.debugOverlay}>
-                <div style={styles.debugHeading}>Run State</div>
-                <div style={styles.debugRow}>Streets<span style={styles.debugValue}>{streets.length}</span></div>
-                <div style={styles.debugRow}>Visible<span style={styles.debugValue}>{visible.length}</span></div>
-                <div style={styles.debugRow}>Activities<span style={styles.debugValue}>{activities.length}</span></div>
-                <div style={styles.debugRow}>Radius<span style={styles.debugValue}>{radiusMiles.toFixed(1)} mi</span></div>
-            </div>
+            {/* Debug Overlay - hidden on mobile */}
+            {!isMobile && (
+                <div style={styles.debugOverlay}>
+                    <div style={styles.debugHeading}>Run State</div>
+                    <div style={styles.debugRow}>Streets<span style={styles.debugValue}>{streets.length}</span></div>
+                    <div style={styles.debugRow}>Visible<span style={styles.debugValue}>{visible.length}</span></div>
+                    <div style={styles.debugRow}>Activities<span style={styles.debugValue}>{activities.length}</span></div>
+                    <div style={styles.debugRow}>Radius<span style={styles.debugValue}>{radiusMiles.toFixed(1)} mi</span></div>
+                </div>
+            )}
 
             {sidebarOpen && (
-                <View style={styles.sidebar}>
-                    <div style={styles.sidebarTitle}>Controls</div>
+                <View style={isMobile ? styles.sidebarMobile : styles.sidebar}>
+                    <div style={styles.sidebarHeader}>
+                        <div style={styles.sidebarTitle}>Controls</div>
+                        {isMobile && (
+                            <button style={styles.closeBtn} onClick={() => setSidebarOpen(false)}>✕</button>
+                        )}
+                    </div>
 
                     <View style={styles.row}>
                         <div style={styles.label}>Show Completed</div>
@@ -275,17 +297,49 @@ export default function MapScreenWeb() {
                 ☰
             </button>
 
+            {/* Mobile Route Stats Bar (when route exists and panels closed) */}
+            {isMobile && routeStats && !routePlannerOpen && !showRouteDetails && (
+                <div style={styles.mobileRouteStatsBar}>
+                    <div style={styles.mobileRouteStatsText}>
+                        {routeStats.distanceMiles.toFixed(1)} mi • {routeStats.unrunPercentage.toFixed(0)}% new
+                    </div>
+                    <div style={styles.mobileRouteStatsButtons}>
+                        <button 
+                            style={styles.mobileRouteStatsBtn}
+                            onClick={() => setShowRouteDetails(true)}
+                        >
+                            Details
+                        </button>
+                        <button 
+                            style={{...styles.mobileRouteStatsBtn, ...styles.mobileRouteStatsBtnClear}}
+                            onClick={clearPlannedRoute}
+                        >
+                            Clear
+                        </button>
+                    </div>
+                </div>
+            )}
+
             {/* Route Planner Button */}
             <button
-                style={styles.routePlannerButton}
+                style={isMobile ? styles.routePlannerButtonMobile : styles.routePlannerButton}
                 onClick={() => setRoutePlannerOpen(!routePlannerOpen)}
             >
-                🗺️ Plan Route
+                🗺️ {isMobile ? '' : 'Plan Route'}
             </button>
+
+            {/* Pin Mode Indicator (mobile) */}
+            {isMobile && pinTarget && (
+                <div style={styles.pinModeIndicator}>
+                    <span>Tap map to set {pinTarget === 'start' ? 'START' : 'END'} point</span>
+                    <button style={styles.pinModeCancel} onClick={() => setPinTarget(null)}>Cancel</button>
+                </div>
+            )}
 
             {/* Route Planner Panel */}
             {routePlannerOpen && (
-                <div style={styles.routePlannerPanel}>
+                <div style={isMobile ? styles.routePlannerPanelMobile : styles.routePlannerPanel}>
+                    {isMobile && <div style={styles.bottomSheetHandle} />}
                     <div style={styles.routePlannerHeader}>
                         <span style={styles.routePlannerTitle}>Route Planner</span>
                         <button 
@@ -296,9 +350,11 @@ export default function MapScreenWeb() {
                         </button>
                     </div>
                     
-                    <p style={styles.routePlannerDesc}>
-                        Plan a route that maximizes unrun street coverage
-                    </p>
+                    {!isMobile && (
+                        <p style={styles.routePlannerDesc}>
+                            Plan a route that maximizes unrun street coverage
+                        </p>
+                    )}
 
                     {/* Start Location */}
                     <div style={styles.inputGroup}>
@@ -526,7 +582,8 @@ export default function MapScreenWeb() {
 
             {/* Route Details Panel */}
             {showRouteDetails && plannedRoute && (
-                <div style={styles.routeDetailsPanel}>
+                <div style={isMobile ? styles.routeDetailsPanelMobile : styles.routeDetailsPanel}>
+                    {isMobile && <div style={styles.bottomSheetHandle} />}
                     <div style={styles.routeDetailsPanelHeader}>
                         <span style={styles.routePlannerTitle}>Route Directions</span>
                         <button 
@@ -1006,5 +1063,157 @@ const styles: any = {
         fontWeight: 'bold',
         cursor: 'pointer',
         transition: 'all 150ms ease',
+    },
+    
+    // ==========================================
+    // MOBILE-SPECIFIC STYLES
+    // ==========================================
+    
+    sidebarMobile: {
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        maxHeight: '70vh',
+        background: palette.panel,
+        padding: 16,
+        paddingBottom: 30,
+        borderTopLeftRadius: 20,
+        borderTopRightRadius: 20,
+        boxShadow: '0 -10px 40px rgba(0,0,0,0.5)',
+        zIndex: 10000,
+        color: palette.text,
+        border: `1px solid ${palette.panelBorder}`,
+        borderBottom: 'none',
+        overflowY: 'auto',
+    },
+    sidebarHeader: {
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 8,
+    },
+    routePlannerButtonMobile: {
+        position: 'absolute',
+        bottom: 20,
+        right: 20,
+        fontSize: 20,
+        padding: '14px 16px',
+        zIndex: 9998,
+        background: palette.route || '#f97316',
+        color: '#fff',
+        border: 'none',
+        borderRadius: 50,
+        boxShadow: '0 4px 20px rgba(249, 115, 22, 0.4)',
+        cursor: 'pointer',
+        fontWeight: 'bold',
+    },
+    routePlannerPanelMobile: {
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        maxHeight: '75vh',
+        background: palette.panel,
+        padding: 16,
+        paddingTop: 8,
+        paddingBottom: 30,
+        borderTopLeftRadius: 20,
+        borderTopRightRadius: 20,
+        boxShadow: '0 -10px 40px rgba(0,0,0,0.5)',
+        zIndex: 10000,
+        color: palette.text,
+        border: `1px solid ${palette.panelBorder}`,
+        borderBottom: 'none',
+        overflowY: 'auto',
+    },
+    bottomSheetHandle: {
+        width: 40,
+        height: 4,
+        background: palette.muted,
+        borderRadius: 2,
+        margin: '0 auto 12px',
+    },
+    pinModeIndicator: {
+        position: 'absolute',
+        top: 60,
+        left: 10,
+        right: 10,
+        background: '#ef4444',
+        padding: '12px 16px',
+        borderRadius: 10,
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        zIndex: 10000,
+        color: '#fff',
+        fontSize: 14,
+        fontWeight: 'bold',
+    },
+    pinModeCancel: {
+        background: 'transparent',
+        border: 'none',
+        color: '#fff',
+        fontWeight: 'bold',
+        textDecoration: 'underline',
+        cursor: 'pointer',
+        fontSize: 14,
+    },
+    routeDetailsPanelMobile: {
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        maxHeight: '80vh',
+        background: palette.panel,
+        padding: 16,
+        paddingTop: 8,
+        paddingBottom: 30,
+        borderTopLeftRadius: 20,
+        borderTopRightRadius: 20,
+        boxShadow: '0 -10px 40px rgba(0,0,0,0.5)',
+        zIndex: 10000,
+        color: palette.text,
+        border: `1px solid ${palette.panelBorder}`,
+        borderBottom: 'none',
+        display: 'flex',
+        flexDirection: 'column',
+    },
+    mobileRouteStatsBar: {
+        position: 'absolute',
+        bottom: 90,
+        left: 10,
+        right: 10,
+        background: palette.panel,
+        borderRadius: 12,
+        padding: '10px 14px',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        zIndex: 9997,
+        border: `1px solid ${palette.panelBorder}`,
+        boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+    },
+    mobileRouteStatsText: {
+        color: palette.accent,
+        fontWeight: 'bold',
+        fontSize: 14,
+    },
+    mobileRouteStatsButtons: {
+        display: 'flex',
+        gap: 8,
+    },
+    mobileRouteStatsBtn: {
+        background: 'rgba(56, 189, 248, 0.2)',
+        border: 'none',
+        padding: '6px 12px',
+        borderRadius: 6,
+        color: palette.text,
+        fontWeight: 'bold',
+        fontSize: 12,
+        cursor: 'pointer',
+    },
+    mobileRouteStatsBtnClear: {
+        background: 'rgba(239, 68, 68, 0.2)',
     },
 };
