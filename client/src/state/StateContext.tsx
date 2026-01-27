@@ -6,6 +6,7 @@ import { classify, computeConfidencePerStreet } from '../utils/debug/debugConfid
 import { matchStreets, matchStreetsAI } from './matching/matcher';
 import { getEnv } from '../utils/getEnv';
 import { Coord } from './core/geometry/base';
+import { PlannedRoute } from './routing/routePlanner';
 
 export type StravaActivity = {
   id: number;
@@ -51,6 +52,10 @@ type StateContextType = {
   setProgressMessage: (s: string | null) => void;
   manualEdits: ManualEdit[];
   exportManualEdits: () => void;
+  // Route planning
+  plannedRoute: PlannedRoute | null;
+  setPlannedRoute: (route: PlannedRoute | null) => void;
+  clearPlannedRoute: () => void;
 };
 
 const ctx = createContext<StateContextType | undefined>(undefined);
@@ -74,6 +79,11 @@ export const StateProvider = ({ children }: { children: ReactNode }) => {
   const [progress, setProgress] = useState(0);
   const [progressMessage, setProgressMessage] = useState<string | null>(null);
   const [manualEdits, setManualEdits] = useState<ManualEdit[]>([]);
+  const [plannedRoute, setPlannedRoute] = useState<PlannedRoute | null>(null);
+
+  function clearPlannedRoute() {
+    setPlannedRoute(null);
+  }
 
   function toggleStreet(id: string) {
     console.log("street id:", id);
@@ -390,6 +400,11 @@ export const StateProvider = ({ children }: { children: ReactNode }) => {
         toggleStreet,
         manualEdits,
         exportManualEdits,
+
+        // Route planning
+        plannedRoute,
+        setPlannedRoute,
+        clearPlannedRoute,
       }}
     >
       {children}

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useCallback } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import {
@@ -8,6 +8,7 @@ import {
 } from '../utils/debug/debugConfidenceOverlay';
 import { Street } from '../state/matching/matcher_kdtree';
 import { palette } from '../theme/palette';
+import { PlannedRoute } from '../state/routing/routePlanner';
 
 interface WebMapViewProps {
   center: { latitude: number; longitude: number };
@@ -20,6 +21,9 @@ interface WebMapViewProps {
   showStravaOverlay: boolean;
   showConfidenceOverlay: boolean;
   onToggleStreet: (id: string) => void;
+  plannedRoute?: PlannedRoute | null;
+  pinMode?: boolean;
+  onMapClick?: (lat: number, lon: number) => void;
 }
 
 export default function WebMapView({
@@ -29,7 +33,10 @@ export default function WebMapView({
   mapTheme,
   showStravaOverlay,
   showConfidenceOverlay,
-  onToggleStreet
+  onToggleStreet,
+  plannedRoute,
+  pinMode,
+  onMapClick
 }: WebMapViewProps) {
   const mapRef = useRef<L.Map | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -38,6 +45,7 @@ export default function WebMapView({
   // NEW: track layers explicitly
   const streetLayersRef = useRef<L.Layer[]>([]);
   const stravaLayersRef = useRef<L.Layer[]>([]);
+  const routeLayersRef = useRef<L.Layer[]>([]);
 
   // Initialize map once
   useEffect(() => {
@@ -54,6 +62,9 @@ export default function WebMapView({
 
       mapRef.current.createPane("stravaPane");
       mapRef.current.getPane("stravaPane")!.style.zIndex = "500";
+
+      mapRef.current.createPane("routePane");
+      mapRef.current.getPane("routePane")!.style.zIndex = "600";
 
       ensureConfidencePane(mapRef.current);
     }
@@ -166,6 +177,144 @@ export default function WebMapView({
       drawConfidenceOverlay(map, streets);
     }
   }, [showConfidenceOverlay, streets]);
+
+  // Draw planned route
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    // Remove old route layers
+    routeLayersRef.current.forEach(l => map.removeLayer(l));
+    routeLayersRef.current = [];
+
+    if (plannedRoute && plannedRoute.path.length > 1) {
+      // Draw route background (thicker, for outline effect)
+      const bgLayer = L.polyline(
+        plannedRoute.path.map(c => [c.latitude, c.longitude]),
+        {
+          color: '#000',
+          weight: 10,
+          opacity: 0.5,
+          pane: "routePane"
+        }
+      ).addTo(map);
+      routeLayersRef.current.push(bgLayer);
+
+      // Draw main route line
+      const routeLayer = L.polyline(
+        plannedRoute.path.map(c => [c.latitude, c.longitude]),
+        {
+          color: palette.route || '#f97316',
+          weight: 6,
+          opacity: 0.9,
+          pane: "routePane"
+        }
+      ).addTo(map);
+      routeLayersRef.current.push(routeLayer);
+
+      // Add start marker
+      if (plannedRoute.path.length > 0) {
+        const startCoord = plannedRoute.path[0];
+        const startMarker = L.circleMarker(
+          [startCoord.latitude, startCoord.longitude],
+          {
+            radius: 10,
+            fillColor: '#22c55e',
+            color: '#fff',
+            weight: 3,
+            fillOpacity: 1,
+            pane: "routePane"
+          }
+        ).addTo(map);
+        startMarker.bindTooltip('Start', { permanent: false, direction: 'top' });
+        routeLayersRef.current.push(startMarker);
+      }
+
+      // Add end marker (if different from start)
+      if (plannedRoute.path.length > 1) {
+        const endCoord = plannedRoute.path[plannedRoute.path.length - 1];
+        const startCoord = plannedRoute.path[0];
+        const isSamePoint = 
+          Math.abs(endCoord.latitude - startCoord.latitude) < 0.0001 &&
+          Math.abs(endCoord.longitude - startCoord.longitude) < 0.0001;
+        
+        if (!isSamePoint) {
+          const endMarker = L.circleMarker(
+            [endCoord.latitude, endCoord.longitude],
+            {
+              radius: 10,
+              fillColor: '#ef4444',
+              color: '#fff',
+              weight: 3,
+              fillOpacity: 1,
+              pane: "routePane"
+            }
+          ).addTo(map);
+          endMarker.bindTooltip('End', { permanent: false, direction: 'top' });
+          routeLayersRef.current.push(endMarker);
+        }
+      }
+
+      // Add direction arrows along the route
+      const totalPoints = plannedRoute.path.length;
+      const arrowInterval = Math.max(1, Math.floor(totalPoints / 10)); // ~10 arrows
+      
+      for (let i = arrowInterval; i < totalPoints - 1; i += arrowInterval) {
+        const current = plannedRoute.path[i];
+        const next = plannedRoute.path[Math.min(i + 1, totalPoints - 1)];
+        
+        // Calculate bearing
+        const bearing = Math.atan2(
+          next.longitude - current.longitude,
+          next.latitude - current.latitude
+        ) * (180 / Math.PI);
+
+        const arrowMarker = L.marker([current.latitude, current.longitude], {
+          icon: L.divIcon({
+            className: 'route-arrow',
+            html: `<div style="
+              transform: rotate(${90 - bearing}deg);
+              color: ${palette.route || '#f97316'};
+              font-size: 16px;
+              font-weight: bold;
+              text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+            ">▶</div>`,
+            iconSize: [16, 16],
+            iconAnchor: [8, 8]
+          }),
+          pane: "routePane"
+        }).addTo(map);
+        routeLayersRef.current.push(arrowMarker);
+      }
+    }
+  }, [plannedRoute]);
+
+  // Handle map clicks for pin placement
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    const handleClick = (e: L.LeafletMouseEvent) => {
+      if (pinMode && onMapClick) {
+        onMapClick(e.latlng.lat, e.latlng.lng);
+      }
+    };
+
+    map.on('click', handleClick);
+    
+    // Change cursor when in pin mode
+    const container = map.getContainer();
+    if (pinMode) {
+      container.style.cursor = 'crosshair';
+    } else {
+      container.style.cursor = '';
+    }
+
+    return () => {
+      map.off('click', handleClick);
+      container.style.cursor = '';
+    };
+  }, [pinMode, onMapClick]);
 
   return <div ref={containerRef} style={{ width: '100%', height: '100%' }} />;
 }
