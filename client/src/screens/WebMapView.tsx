@@ -13,6 +13,7 @@ import { PolygonPoint } from '../state/StateContext';
 
 interface WebMapViewProps {
   center: { latitude: number; longitude: number };
+  mapZoom: number;
   streets: Street[];
   activities: Array<{
     id: number;
@@ -32,6 +33,7 @@ interface WebMapViewProps {
 
 export default function WebMapView({
   center,
+  mapZoom,
   streets,
   activities,
   mapTheme,
@@ -86,12 +88,12 @@ export default function WebMapView({
     };
   }, []);
 
-  // Recenter when center updates
+  // Recenter when center or zoom updates
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    map.setView([center.latitude, center.longitude], map.getZoom());
-  }, [center.latitude, center.longitude]);
+    map.setView([center.latitude, center.longitude], mapZoom);
+  }, [center.latitude, center.longitude, mapZoom]);
 
   // Base map theme switcher
   useEffect(() => {

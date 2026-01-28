@@ -64,6 +64,7 @@ export default function SettingsScreen({ closePanel }: { closePanel: () => void 
   const {
     center,
     setCenter,
+    setMapZoom,
     radiusMiles,
     setRadiusMiles,
     filterMode,
@@ -83,6 +84,7 @@ export default function SettingsScreen({ closePanel }: { closePanel: () => void 
     osm: false,
     strava: false,
     all: false,
+    address: false,
   });
 
   const [addressInput, setAddressInput] = useState('');
@@ -102,12 +104,22 @@ export default function SettingsScreen({ closePanel }: { closePanel: () => void 
   }
 
   async function useCurrentLocation() {
+    setLoadingFlag('address', true); // Reuse address loading flag for UI feedback
+    
     try {
       if (isWeb) {
         if (!navigator.geolocation) {
           Alert.alert('Geolocation not supported', 'Your browser does not support geolocation');
           return;
         }
+        
+        // Use options for faster response - we don't need high GPS accuracy
+        const options: PositionOptions = {
+          enableHighAccuracy: false, // Faster, uses WiFi/IP instead of waiting for GPS
+          timeout: 10000, // 10 second timeout
+          maximumAge: 60000, // Accept cached position up to 1 minute old
+        };
+        
         navigator.geolocation.getCurrentPosition(
           pos => {
             setCenter({
@@ -115,67 +127,116 @@ export default function SettingsScreen({ closePanel }: { closePanel: () => void 
               latitude: pos.coords.latitude,
               longitude: pos.coords.longitude,
             });
-            Alert.alert('Success', 'Center updated to your current location');
+            setMapZoom(15);
+            setLoadingFlag('address', false);
           },
-          err => Alert.alert('Error', err.message || 'Could not get location')
+          err => {
+            setLoadingFlag('address', false);
+            Alert.alert('Location Error', err.message || 'Could not get location. Make sure location services are enabled.');
+          },
+          options
         );
       } else {
         if (!Location) throw new Error('expo-location not available');
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status !== 'granted') {
           Alert.alert('Permission denied', 'Location permission is required');
+          setLoadingFlag('address', false);
           return;
         }
-        const loc = await Location.getCurrentPositionAsync({});
+        const loc = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced, // Faster than High accuracy
+        });
         setCenter({
           name: 'Current Location',
           latitude: loc.coords.latitude,
           longitude: loc.coords.longitude,
         });
-        Alert.alert('Success', 'Center updated to your current location');
+        setMapZoom(15);
+        setLoadingFlag('address', false);
       }
     } catch (err: any) {
+      setLoadingFlag('address', false);
       Alert.alert('Error', err.message || 'Could not get location');
     }
   }
 
   async function useAddress() {
-    if (!addressInput.trim()) {
-      Alert.alert('Empty address', 'Please enter an address');
+    const query = addressInput.trim();
+    if (!query) {
+      Alert.alert('Empty address', 'Please enter an address, city, or place name');
       return;
     }
+    
+    setLoadingFlag('address', true);
+    
     try {
       if (isWeb) {
+        // Use Nominatim with proper headers and parameters for better results
+        const params = new URLSearchParams({
+          format: 'json',
+          q: query,
+          limit: '5',
+          addressdetails: '1',
+        });
+        
         const res = await fetch(
-          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(addressInput)}`
+          `https://nominatim.openstreetmap.org/search?${params.toString()}`,
+          {
+            headers: {
+              'User-Agent': 'StreetSweeper/1.0',
+              'Accept': 'application/json',
+            },
+          }
         );
+        
+        if (!res.ok) {
+          throw new Error(`Geocoding service error: ${res.status}`);
+        }
+        
         const results = await res.json();
+        
         if (!results || results.length === 0) {
-          Alert.alert('Not found', 'Address could not be geocoded');
+          Alert.alert(
+            'Location not found', 
+            'Try a more specific address or city name.\n\nExamples:\n• "Seattle, WA"\n• "123 Main St, Portland, OR"\n• "Central Park, New York"'
+          );
           return;
         }
-        const { lat, lon } = results[0];
+        
+        // Use the best result
+        const best = results[0];
+        const displayName = best.display_name?.split(',').slice(0, 3).join(',') || query;
+        
         setCenter({
-          name: addressInput,
-          latitude: parseFloat(lat),
-          longitude: parseFloat(lon),
+          name: displayName,
+          latitude: parseFloat(best.lat),
+          longitude: parseFloat(best.lon),
         });
+        setMapZoom(15);
         setAddressInput('');
-        Alert.alert('Success', 'Center updated to ' + addressInput);
+        Alert.alert('Success', `Map centered on:\n${displayName}`);
       } else {
         if (!Location) throw new Error('expo-location not available');
-        const results = await Location.geocodeAsync(addressInput);
+        const results = await Location.geocodeAsync(query);
         if (!results.length) {
-          Alert.alert('Not found', 'Address could not be geocoded');
+          Alert.alert(
+            'Location not found',
+            'Try a more specific address or city name.'
+          );
           return;
         }
         const { latitude, longitude } = results[0];
-        setCenter({ name: addressInput, latitude, longitude });
+        setCenter({ name: query, latitude, longitude });
+        setMapZoom(15);
         setAddressInput('');
-        Alert.alert('Success', 'Center updated to ' + addressInput);
+        Alert.alert('Success', 'Center updated to ' + query);
       }
     } catch (err: any) {
-      Alert.alert('Error', err.message || 'Could not geocode address');
+      console.error('Geocoding error:', err);
+      Alert.alert('Geocoding Error', err.message || 'Could not find location. Please try again.');
+    } finally {
+      setLoadingFlag('address', false);
     }
   }
 
@@ -437,19 +498,30 @@ export default function SettingsScreen({ closePanel }: { closePanel: () => void 
       <Text style={styles.title}>Settings</Text>
       <Text style={[styles.text, styles.sectionLabel]}>Current Center: {center.name}</Text>
 
-      <ActionButton title="Use Current Location" onPress={useCurrentLocation} />
+      <ActionButton 
+        title={loading.address ? "Getting Location..." : "Use Current Location"} 
+        onPress={useCurrentLocation}
+        disabled={loading.address}
+      />
 
       <View style={styles.spacer} />
 
-      <Text style={styles.text}>Or enter an address:</Text>
+      <Text style={styles.text}>Or search for a location:</Text>
       <TextInput
         style={styles.input}
-        placeholder="Enter address"
+        placeholder="City, address, or place name..."
         placeholderTextColor={palette.muted}
         value={addressInput}
         onChangeText={setAddressInput}
+        onSubmitEditing={useAddress}
+        returnKeyType="search"
       />
-      <ActionButton title="Set as Center" onPress={useAddress} variant="secondary" />
+      <ActionButton 
+        title={loading.address ? "Searching..." : "Search Location"} 
+        onPress={useAddress} 
+        variant="secondary"
+        disabled={loading.address}
+      />
 
       <View style={styles.spacer} />
       

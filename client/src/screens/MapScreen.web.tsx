@@ -12,6 +12,7 @@ const MOBILE_BREAKPOINT = 768;
 export default function MapScreenWeb() {
     const {
         center,
+        mapZoom,
         streets,
         activities,
         showCompleted,
@@ -165,6 +166,7 @@ export default function MapScreenWeb() {
         <View style={styles.container}>
             <WebMapView
                 center={center}
+                mapZoom={mapZoom}
                 streets={visible}
                 activities={activities}
                 mapTheme={mapTheme}
