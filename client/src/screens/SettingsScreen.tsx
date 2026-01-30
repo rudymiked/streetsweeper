@@ -383,25 +383,22 @@ export default function SettingsScreen({ closePanel }: { closePanel: () => void 
   }
 
   async function exchangeStravaToken(
-    code: string,
-    clientId: number,
-    clientSecret: string
+    code: string
   ): Promise<string> {
-    const res = await fetch(`${getEnv("EXPO_PUBLIC_STRAVA_AUTHORIZE_TOKEN_URL")}`, {
+    // Use secure backend proxy - client secret is stored server-side
+    const STRAVA_TOKEN_PROXY_URL = getEnv("EXPO_PUBLIC_STRAVA_TOKEN_PROXY_URL") || 
+      "https://streetsweeper-overpass-hjbthgeffjdqe0hf.westus2-01.azurewebsites.net/api/strava-token";
+
+    const res = await fetch(STRAVA_TOKEN_PROXY_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        client_id: clientId,
-        client_secret: clientSecret,
-        code,
-        grant_type: 'authorization_code',
-      }),
+      body: JSON.stringify({ code }),
     });
 
     const json = await res.json();
 
     if (!res.ok || !json.access_token) {
-      throw new Error('Token exchange failed');
+      throw new Error(json.error || 'Token exchange failed');
     }
 
     return json.access_token;
@@ -429,20 +426,20 @@ export default function SettingsScreen({ closePanel }: { closePanel: () => void 
 
     try {
       const STRAVA_CLIENT_ID = Number(getEnv("EXPO_PUBLIC_STRAVA_CLIENT_ID")) || 0;
-      const STRAVA_CLIENT_SECRET = getEnv("EXPO_PUBLIC_STRAVA_CLIENT_SECRET") || '';
       const STRAVA_SCOPES = 'activity:read_all';
 
-      if (!STRAVA_CLIENT_ID || !STRAVA_CLIENT_SECRET) {
-        setStatusMessage('Missing Strava settings');
-        Alert.alert('Missing Strava settings');
+      if (!STRAVA_CLIENT_ID) {
+        setStatusMessage('Missing Strava Client ID');
+        Alert.alert('Missing Strava Client ID');
         return [];
       }
 
-      const code = await getStravaAuthCode(STRAVA_CLIENT_ID, STRAVA_CLIENT_SECRET, STRAVA_SCOPES);
+      // Note: Client secret is no longer needed here - it's stored securely on the server
+      const code = await getStravaAuthCode(STRAVA_CLIENT_ID, '', STRAVA_SCOPES);
       if (!code) throw new Error('No auth code received');
 
       setStatusMessage('Exchanging token...');
-      const accessToken = await exchangeStravaToken(code, STRAVA_CLIENT_ID, STRAVA_CLIENT_SECRET);
+      const accessToken = await exchangeStravaToken(code);
 
       const rawActivities = await loadStravaActivities(accessToken);
       console.log(`Loaded ${rawActivities.length} activities from Strava`);
@@ -619,13 +616,13 @@ export default function SettingsScreen({ closePanel }: { closePanel: () => void 
         variant="secondary"
       />
 
-      <View style={styles.spacer} />
+      {/* <View style={styles.spacer} />
 
       <ActionButton
         title="Load Strava and Streets from JSON (AI)"
         onPress={() => loadFromJson(true)}
         variant="secondary"
-      />
+      /> */}
 
       <View style={styles.spacer} />
 

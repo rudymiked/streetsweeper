@@ -1,4 +1,3 @@
-import Constants from "expo-constants";
 import { DebugSegmentScore } from "../../utils/debug/debugOverlay.types";
 import { Coord } from "../core/geometry/base";
 import { Activity, Street } from "./matcher_kdtree";
@@ -24,13 +23,10 @@ export interface MatchResults {
 }
 
 // ------------------------------
-// Azure Setup
+// API Proxy URL (secure - no API keys exposed)
 // ------------------------------
-const extra = Constants.expoConfig?.extra ?? {};
-
-const API_KEY = getEnv("EXPO_PUBLIC_AZURE_OPENAI_KEY");
-const ENDPOINT = getEnv("EXPO_PUBLIC_AZURE_OPENAI_ENDPOINT");
-const DEPLOYMENT = getEnv("EXPO_PUBLIC_AZURE_OPENAI_DEPLOYMENT");
+const OPENAI_PROXY_URL = getEnv("EXPO_PUBLIC_OPENAI_PROXY_URL") || 
+  "https://streetsweeper-overpass-hjbthgeffjdqe0hf.westus2-01.azurewebsites.net/api/openai-proxy";
 
 // ------------------------------
 // Helpers
@@ -44,7 +40,7 @@ function chunkArray<T>(arr: T[], size: number): T[][] {
 }
 
 // ------------------------------
-// Azure Model Call (Expo-safe)
+// Azure Model Call (via secure backend proxy)
 // ------------------------------
 async function callAzureModel(
   streetsChunk: Street[],
@@ -52,16 +48,14 @@ async function callAzureModel(
 ): Promise<MatchResults> {
   const payload = { streets: streetsChunk, activities };
 
-  const url = `${ENDPOINT}/openai/deployments/${DEPLOYMENT}/chat/completions?api-version=2024-02-15-preview`;
-
-  const response = await fetch(url, {
+  // Call our secure backend proxy instead of Azure directly
+  // The API key is stored securely on the server
+  const response = await fetch(OPENAI_PROXY_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "api-key": API_KEY,
     },
     body: JSON.stringify({
-      model: DEPLOYMENT,
       messages: [
         {
           role: "system",
@@ -87,7 +81,12 @@ Do not invent geometry. Use only the provided coordinates.
   });
 
   const json = await response.json();
-  console.log("Azure error:", json.error);
+  
+  if (json.error) {
+    console.log("OpenAI proxy error:", json.error);
+    throw new Error(json.error.details || json.error);
+  }
+  
   const message = json.choices?.[0]?.message?.content;
 
   if (!message) {

@@ -2,6 +2,11 @@
   "IsEncrypted": false,
   "Values": {
     "AzureWebJobsStorage": "UseDevelopmentStorage=true",
-    "FUNCTIONS_WORKER_RUNTIME": "node"
+    "FUNCTIONS_WORKER_RUNTIME": "node",
+    "STRAVA_CLIENT_ID": "<your-strava-client-id>",
+    "STRAVA_CLIENT_SECRET": "<your-strava-client-secret>",
+    "AZURE_OPENAI_ENDPOINT": "<your-azure-openai-endpoint>",
+    "AZURE_OPENAI_KEY": "<your-azure-openai-key>",
+    "AZURE_OPENAI_DEPLOYMENT": "<your-deployment-name>"
   }
 }

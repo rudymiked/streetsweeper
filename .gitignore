@@ -41,3 +41,4 @@ yarn-error.*
 /android
 .vscode/*
 client/package-lock.json
+api/local.settings.json
