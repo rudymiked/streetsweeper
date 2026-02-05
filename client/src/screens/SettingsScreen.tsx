@@ -19,6 +19,7 @@ import osmMock from '../../assets/mock/osm.json';
 import stravaMock from '../../assets/mock/strava.json';
 import { getEnv } from '../utils/getEnv';
 import { palette } from '../theme/palette';
+import { resetOnboarding, getStoredAthlete } from './OnboardingScreen';
 
 const extra = Constants.expoConfig?.extra ?? {};
 
@@ -682,6 +683,31 @@ export default function SettingsScreen({ closePanel }: { closePanel: () => void 
         title={"Export Manual Edits"}
         onPress={exportManualEdits}
         disabled={manualEdits.length === 0}
+        variant="secondary"
+      />
+
+      <View style={styles.divider} />
+
+      <Text style={[styles.text, styles.sectionLabel]}>Account</Text>
+      <ActionButton
+        title="Reset App & Show Onboarding"
+        onPress={() => {
+          Alert.alert(
+            'Reset App',
+            'This will clear your Strava connection and show the onboarding screen again. Your data will not be deleted.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              {
+                text: 'Reset',
+                style: 'destructive',
+                onPress: async () => {
+                  await resetOnboarding();
+                  Alert.alert('Reset Complete', 'Please restart the app to see the onboarding screen.');
+                },
+              },
+            ]
+          );
+        }}
         variant="secondary"
       />
 

@@ -1,11 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Platform, TouchableOpacity, Text, Animated, Dimensions, Pressable } from 'react-native';
+import { Platform, TouchableOpacity, Text, Animated, Dimensions, Pressable, View, ActivityIndicator } from 'react-native';
 import { Image } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createDrawerNavigator } from '@react-navigation/drawer';
 import { StateProvider } from './src/state/StateContext';
 import MapScreen from './src/screens/MapScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
+import OnboardingScreen, { isOnboardingComplete } from './src/screens/OnboardingScreen';
 import Constants from "expo-constants";
 import { palette } from './src/theme/palette';
 
@@ -25,7 +26,25 @@ export default function App() {
   }
 
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [showOnboarding, setShowOnboarding] = useState(false);
   const slideAnim = useRef(new Animated.Value(SCREEN_WIDTH)).current;
+
+  // Check if onboarding is complete on app start
+  useEffect(() => {
+    async function checkOnboarding() {
+      try {
+        const complete = await isOnboardingComplete();
+        setShowOnboarding(!complete);
+      } catch (err) {
+        console.error('Error checking onboarding status:', err);
+        setShowOnboarding(false);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    checkOnboarding();
+  }, []);
 
   useEffect(() => {
     Animated.timing(slideAnim, {
@@ -36,6 +55,24 @@ export default function App() {
   }, [settingsOpen]);
 
   const toggleSettings = () => setSettingsOpen(prev => !prev);
+
+  // Show loading spinner while checking onboarding status
+  if (isLoading) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: palette.dark }}>
+        <ActivityIndicator size="large" color={palette.accent} />
+      </View>
+    );
+  }
+
+  // Show onboarding for first-time users
+  if (showOnboarding) {
+    return (
+      <StateProvider>
+        <OnboardingScreen onComplete={() => setShowOnboarding(false)} />
+      </StateProvider>
+    );
+  }
 
   return (
     <StateProvider>
