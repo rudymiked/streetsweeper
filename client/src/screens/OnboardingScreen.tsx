@@ -165,7 +165,7 @@ export default function OnboardingScreen({ onComplete }: OnboardingScreenProps) 
 
     try {
       const STRAVA_CLIENT_ID = Number(getEnv('EXPO_PUBLIC_STRAVA_CLIENT_ID')) || 0;
-      const STRAVA_SCOPES = 'activity:read_all,profile:read_all';
+      const STRAVA_SCOPES = 'activity:read_all';
 
       if (!STRAVA_CLIENT_ID) {
         throw new Error('Strava configuration is missing. Please contact support.');
