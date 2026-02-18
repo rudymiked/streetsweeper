@@ -53,7 +53,7 @@ export default function OnboardingScreen({ onComplete }: OnboardingScreenProps) 
     const WebBrowser = require('expo-web-browser');
 
     if (isWeb) {
-      const redirectUriWeb = AuthSession.makeRedirectUri({ preferLocalhost: true });
+      const redirectUriWeb = AuthSession.makeRedirectUri({ useProxy: true });
 
       const authUrl =
         `${getEnv('EXPO_PUBLIC_STRAVA_AUTHORIZE_URL')}` +
@@ -101,7 +101,7 @@ export default function OnboardingScreen({ onComplete }: OnboardingScreenProps) 
     }
 
     // Mobile (Android/iOS)
-    const redirectUri = AuthSession.makeRedirectUri({ preferLocalhost: true });
+    const redirectUri = AuthSession.makeRedirectUri({ useProxy: true });
 
     const authUrl =
       `${getEnv('EXPO_PUBLIC_STRAVA_AUTHORIZE_URL')}` +

@@ -310,7 +310,7 @@ export default function SettingsScreen({ closePanel }: { closePanel: () => void 
     const WebBrowser = require('expo-web-browser');
 
     if (Platform.OS === 'web') {
-      const redirectUriWeb = AuthSession.makeRedirectUri({ preferLocalhost: true });
+      const redirectUriWeb = AuthSession.makeRedirectUri({ useProxy: true });
 
       const authUrl =
         `${getEnv("EXPO_PUBLIC_STRAVA_AUTHORIZE_URL")}` +
@@ -359,7 +359,7 @@ export default function SettingsScreen({ closePanel }: { closePanel: () => void 
 
     // Mobile (Android/iOS)
 
-    const redirectUri = AuthSession.makeRedirectUri({ preferLocalhost: true });
+    const redirectUri = AuthSession.makeRedirectUri({ useProxy: true });
 
     const authUrl =
       `${getEnv("EXPO_PUBLIC_STRAVA_AUTHORIZE_URL")}` +
