@@ -310,7 +310,11 @@ export default function SettingsScreen({ closePanel }: { closePanel: () => void 
     const WebBrowser = require('expo-web-browser');
 
     if (Platform.OS === 'web') {
-      const redirectUriWeb = AuthSession.makeRedirectUri({ useProxy: true });
+      // For production web, use the current origin; for dev, use Expo proxy
+      const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+      const redirectUriWeb = isLocalhost 
+        ? AuthSession.makeRedirectUri({ useProxy: true })
+        : window.location.origin + '/';
 
       const authUrl =
         `${getEnv("EXPO_PUBLIC_STRAVA_AUTHORIZE_URL")}` +
