@@ -691,22 +691,33 @@ export default function SettingsScreen({ closePanel }: { closePanel: () => void 
       <Text style={[styles.text, styles.sectionLabel]}>Account</Text>
       <ActionButton
         title="Reset App & Show Onboarding"
-        onPress={() => {
-          Alert.alert(
-            'Reset App',
-            'This will clear your Strava connection and show the onboarding screen again. Your data will not be deleted.',
-            [
-              { text: 'Cancel', style: 'cancel' },
-              {
-                text: 'Reset',
-                style: 'destructive',
-                onPress: async () => {
-                  await resetOnboarding();
-                  Alert.alert('Reset Complete', 'Please restart the app to see the onboarding screen.');
+        onPress={async () => {
+          if (isWeb) {
+            const confirmed = window.confirm(
+              'This will clear your Strava connection and show the onboarding screen again. Your data will not be deleted. Continue?'
+            );
+            if (confirmed) {
+              await resetOnboarding();
+              window.alert('Reset complete. Please refresh the page to see the onboarding screen.');
+              window.location.reload();
+            }
+          } else {
+            Alert.alert(
+              'Reset App',
+              'This will clear your Strava connection and show the onboarding screen again. Your data will not be deleted.',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'Reset',
+                  style: 'destructive',
+                  onPress: async () => {
+                    await resetOnboarding();
+                    Alert.alert('Reset Complete', 'Please restart the app to see the onboarding screen.');
+                  },
                 },
-              },
-            ]
-          );
+              ]
+            );
+          }
         }}
         variant="secondary"
       />
